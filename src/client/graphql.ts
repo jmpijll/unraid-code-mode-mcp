@@ -41,16 +41,13 @@ export class GraphqlClient {
     const payload: GraphqlResponse<T> | undefined = res.body;
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     if (payload?.errors && payload.errors.length > 0) {
-      const summary = payload.errors
-        .map((e) => e.message || 'unknown GraphQL error')
-        .join('; ');
+      const summary = payload.errors.map((e) => e.message || 'unknown GraphQL error').join('; ');
       throw new UnraidGraphqlError(`GraphQL error: ${summary}`, payload.errors, payload.data);
     }
     if (!payload || payload.data === undefined) {
-      throw new UnraidGraphqlError(
-        'GraphQL response had no data and no errors',
-        [{ message: 'empty response' }],
-      );
+      throw new UnraidGraphqlError('GraphQL response had no data and no errors', [
+        { message: 'empty response' },
+      ]);
     }
     /* eslint-enable @typescript-eslint/no-unnecessary-condition */
     return payload.data;
@@ -62,7 +59,10 @@ export class GraphqlClient {
   }
 }
 
-export function createUnraidClient(creds: UnraidCreds, opts: UnraidClientOptions = {}): GraphqlClient {
+export function createUnraidClient(
+  creds: UnraidCreds,
+  opts: UnraidClientOptions = {},
+): GraphqlClient {
   const http = new HttpClient({
     baseUrl: creds.baseUrl,
     apiKey: creds.apiKey,

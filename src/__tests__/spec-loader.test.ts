@@ -65,7 +65,11 @@ describe('spec loader', () => {
     const pool = mockAgent.get('https://tower.local');
     pool
       .intercept({ path: '/graphql', method: 'POST' })
-      .reply(200, { data: FAKE_INTROSPECTION }, { headers: { 'content-type': 'application/json' } });
+      .reply(
+        200,
+        { data: FAKE_INTROSPECTION },
+        { headers: { 'content-type': 'application/json' } },
+      );
 
     const spec = await loadUnraidSpec({
       baseUrl: 'https://tower.local',
@@ -91,7 +95,9 @@ describe('spec loader', () => {
       onWarn: (m) => warns.push(m),
     });
 
-    expect(spec.version).toBe('fallback');
+    // Fallback version is `fallback@<pinned-tag>` so the LLM (and operators
+    // reading logs) can tell which Unraid release the bundled SDL came from.
+    expect(spec.version).toMatch(/^fallback(@v\d+\.\d+\.\d+)?$/);
     expect(spec.operations.length).toBeGreaterThan(0);
     expect(warns.some((m) => m.includes('introspection'))).toBe(true);
   });
@@ -100,7 +106,11 @@ describe('spec loader', () => {
     const pool = mockAgent.get('https://tower.local');
     pool
       .intercept({ path: '/graphql', method: 'POST' })
-      .reply(200, { data: FAKE_INTROSPECTION }, { headers: { 'content-type': 'application/json' } });
+      .reply(
+        200,
+        { data: FAKE_INTROSPECTION },
+        { headers: { 'content-type': 'application/json' } },
+      );
 
     const first = await loadUnraidSpec({
       baseUrl: 'https://tower.local',
@@ -118,11 +128,23 @@ describe('spec loader', () => {
 
   it('reads bundled SDL via loadFallbackSpec', async () => {
     const spec = await loadFallbackSpec();
-    expect(spec.version).toBe('fallback');
+    expect(spec.version).toMatch(/^fallback(@v\d+\.\d+\.\d+)?$/);
     expect(spec.queryCount).toBeGreaterThan(0);
     expect(spec.mutationCount).toBeGreaterThan(0);
     // Sanity: a few well-known Unraid operations should be present.
     const names = new Set(spec.operations.map((o) => o.name));
     expect(names.has('info')).toBe(true);
+  });
+
+  it('exposes the pinned upstream tag in the spec metadata', async () => {
+    const spec = await loadFallbackSpec();
+    // The bundled SDL is regenerated from a pinned tag (see
+    // scripts/update-spec.ts). The loader surfaces that tag in `version`
+    // and `sourceUrl` so the LLM can see which Unraid release the offline
+    // schema represents and so users can verify their box matches.
+    expect(spec.version).toMatch(/^fallback@v\d+\.\d+\.\d+$/);
+    expect(spec.sourceUrl).toMatch(
+      /^embedded:local-fallback\.graphql \(unraid\/api v\d+\.\d+\.\d+\)$/,
+    );
   });
 });

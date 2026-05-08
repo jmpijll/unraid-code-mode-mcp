@@ -110,9 +110,7 @@ export function buildOperationIndex(
   }
 
   // Stable sort: kind, then name. Produces predictable test output.
-  operations.sort(
-    (a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name),
-  );
+  operations.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
 
   return { operations, types: namedTypes };
 }
@@ -159,7 +157,7 @@ function buildOperation(
 function compactNamedType(t: IntrospectionType): NamedTypeEntry {
   const entry: NamedTypeEntry = {
     name: t.name ?? '<unknown>',
-    kind: (t.kind as NamedTypeEntry['kind']),
+    kind: t.kind as NamedTypeEntry['kind'],
   };
   if (t.description) entry.description = t.description;
   if (t.kind === 'OBJECT' || t.kind === 'INTERFACE') {
@@ -241,10 +239,45 @@ function splitCamelCase(s: string): string[] {
 }
 
 const RESERVED_WORDS = new Set([
-  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete',
-  'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if',
-  'import', 'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch', 'this', 'throw',
-  'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'debugger',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'false',
+  'finally',
+  'for',
+  'function',
+  'if',
+  'import',
+  'in',
+  'instanceof',
+  'new',
+  'null',
+  'return',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'true',
+  'try',
+  'typeof',
+  'var',
+  'void',
+  'while',
+  'with',
+  'yield',
+  'let',
+  'static',
 ]);
 
 export function sanitizeIdentifier(input: string): string {

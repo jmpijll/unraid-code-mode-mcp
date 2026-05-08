@@ -10,7 +10,7 @@
  *   - `console.log()`                    — captured into the tool output.
  */
 
-import type { QuickJSContext, QuickJSHandle, QuickJSRuntime } from 'quickjs-emscripten';
+import type { QuickJSContext, QuickJSHandle, QuickJSRuntime } from 'quickjs-emscripten-core';
 import {
   findOperationsByName,
   getOperation,
@@ -83,15 +83,12 @@ export class SearchExecutor extends BaseSyncExecutor {
     getOpFn.dispose();
 
     // findOperationsByName(substring) — substring filter.
-    const findByNameFn = context.newFunction(
-      'findOperationsByName',
-      (subHandle: QuickJSHandle) => {
-        if (!local) return jsonValueToHandle(context, []);
-        const sub = context.getString(subHandle);
-        const ops = findOperationsByName(local, sub).map(summarizeOperation);
-        return jsonValueToHandle(context, ops);
-      },
-    );
+    const findByNameFn = context.newFunction('findOperationsByName', (subHandle: QuickJSHandle) => {
+      if (!local) return jsonValueToHandle(context, []);
+      const sub = context.getString(subHandle);
+      const ops = findOperationsByName(local, sub).map(summarizeOperation);
+      return jsonValueToHandle(context, ops);
+    });
     context.setProp(context.global, 'findOperationsByName', findByNameFn);
     findByNameFn.dispose();
 

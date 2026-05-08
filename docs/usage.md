@@ -63,7 +63,7 @@ Run Unraid GraphQL operations inside the sandbox.
 | `unraid.local.mutation.<fieldName>({ args, fields })` | server API key | typed mutation |
 | `unraid.local.request({ method, path, body, headers })` | server API key | raw HTTP escape hatch for non-GraphQL endpoints |
 
-> **Sync-style calls.** Inside the sandbox, calls appear synchronous. You can use `await`, and you should — the prelude returns Promises that the QuickJS asyncify shim turns into sync-looking awaits. The script's last expression is the tool result.
+> **Idiomatic async.** Calls return real Promises and you can use `await` and `Promise.all` freely. Sequential `await`, parallel batching, and mixed query/mutation/raw chains all work in a single `execute`. The script's last expression (or top-level `return` from an IIAFE) is the tool result.
 
 Surface:
 
@@ -122,14 +122,20 @@ return await unraid.local.mutation.archiveAll({});
 - Move to `execute` once you know what you want.
 - Both tools accept the same `code` input so the LLM can copy a query body straight from one to the other.
 
-## Multiple calls per `execute`: use `Promise.all`, not sequential `await`
+## Multi-step scripts: sequential awaits and `Promise.all` both work
 
-There is an upstream bug in `quickjs-emscripten` ≥ 0.30 where multiple **sequential** `await` calls on host-bridged async functions corrupt the QuickJS runtime ([quickjs-emscripten#258](https://github.com/justjake/quickjs-emscripten/issues/258), [#261](https://github.com/justjake/quickjs-emscripten/issues/261)). It surfaces as either an empty `""` result or a WASM `gc_decref_child` / `JS_FreeRuntime` assertion.
-
-Until the upstream fix lands, batch your calls with `Promise.all` (works perfectly):
+The sandbox uses a sync QuickJS context with a Promise-callback host bridge (see `src/sandbox/execute-executor.ts` for the full rationale). That means **all** standard JS async control flow is supported inside `execute`:
 
 ```js
-// Recommended — parallel and correct
+// Sequential — fine, the next await waits on the previous one as expected.
+const info = await unraid.local.query.info({ fields: 'os { distro }' });
+const arr = await unraid.local.query.array({ fields: 'state' });
+const shares = await unraid.local.query.shares({ fields: 'name free used size' });
+return { info, arr, shares };
+```
+
+```js
+// Parallel — faster when calls are independent.
 const [info, arr, online] = await Promise.all([
   unraid.local.graphql({ query: 'query { info { os { distro } } }' }),
   unraid.local.graphql({ query: 'query { array { state } }' }),
@@ -138,20 +144,19 @@ const [info, arr, online] = await Promise.all([
 return { info, arr, online };
 ```
 
-```js
-// Avoid — multiple sequential `await`s on unraid.local.* in one execute
-const a = await unraid.local.query.info({ fields: 'os { distro }' });
-const b = await unraid.local.query.array({ fields: 'state' });   // upstream bug
-return { a, b };
-```
+Errors inside any `await` propagate normally — wrap with `try/catch` if you want to keep going on failure.
 
-If you need values to depend on each other, prefer issuing two separate `execute` calls.
+There is a per-execute call budget (default 50, see [Limits](#limits)) and a wall-clock timeout — neither pattern bypasses those.
+
+> Earlier versions of this server documented a "use `Promise.all`, not sequential `await`" caveat. That was a workaround for an upstream `quickjs-emscripten` asyncify bug ([#258](https://github.com/justjake/quickjs-emscripten/issues/258), [#261](https://github.com/justjake/quickjs-emscripten/issues/261)). The current sandbox sidesteps the bug entirely by not using asyncify; both call patterns work.
 
 ## When introspection is disabled on the live server
 
-Unraid's GraphQL endpoint disables introspection unless you toggle `Settings → Management Access → Developer Options → GraphQL Sandbox` (or run `unraid-api developer --sandbox true`). When introspection is off, the loader falls back to the bundled SDL (`src/spec/local-fallback.graphql`, mirrored from `unraid/api`).
+Unraid's GraphQL endpoint disables introspection unless you toggle `Settings → Management Access → Developer Options → GraphQL Sandbox` (or run `unraid-api developer --sandbox true`). When introspection is off, the loader falls back to the bundled SDL (`src/spec/local-fallback.graphql`, fetched from a **pinned `unraid/api` release tag**).
 
-That fallback is **schema-complete but may drift ahead of stable**: a few fields shipped on `unraid/api@main` (e.g. `info.versions { unraid api kernel }`, `info.memory { max total free }`) don't exist on Unraid 7.2 GA. The HTTP layer surfaces the live server's `GRAPHQL_VALIDATION_FAILED` messages so you can correct the selection — pick the working subset (`info { os { … } cpu { … } }`, `array { state }`, `shares { name free used size }`, `online`, etc.) and the typed dispatch path will work without any local changes.
+The current pin is recorded in `scripts/update-spec.ts` (`PINNED_UNRAID_TAG`) and stamped into the bundled SDL header so `unraid.local.spec.version` looks like `fallback@vX.Y.Z`. To bump it: edit the constant, run `npm run update-spec`, run `npm test`, and re-verify against a real box.
+
+If your Unraid version is newer or older than the pin, a few specific fields may not exist on your server. The HTTP layer surfaces the live server's `GRAPHQL_VALIDATION_FAILED` messages so you can correct the selection — pick the supported subset (`info { os { … } cpu { … } }`, `array { state }`, `shares { name free used size }`, `online`, etc.) and the typed dispatch path will work without any local changes.
 
 ## Limits
 

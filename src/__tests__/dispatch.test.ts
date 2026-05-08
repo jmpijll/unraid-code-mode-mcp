@@ -82,8 +82,8 @@ describe('dispatch', () => {
       expect(prelude).toContain('unraid.local');
       expect(prelude).toContain('ns.query');
       expect(prelude).toContain('ns.mutation');
-      expect(prelude).toContain('graphql:');
-      expect(prelude).toContain('request:');
+      expect(prelude).toContain('ns.graphql');
+      expect(prelude).toContain('ns.request');
     });
 
     it('returns a __missing stub when no spec is provided', () => {
@@ -96,7 +96,7 @@ describe('dispatch', () => {
       const prelude = buildUnraidPrelude(spec);
       // Pull out every `ns.query.<name>` and `ns.mutation.<name>` declaration
       // and check none collide.
-      const matches = [...prelude.matchAll(/ns\.(query|mutation)\.([a-zA-Z0-9_$]+) = function/g)];
+      const matches = [...prelude.matchAll(/ns\.(query|mutation)\.([a-zA-Z0-9_$]+) = __wrapOp/g)];
       const queryNames = matches.filter((m) => m[1] === 'query').map((m) => m[2] ?? '');
       const mutationNames = matches.filter((m) => m[1] === 'mutation').map((m) => m[2] ?? '');
       expect(new Set(queryNames).size).toBe(queryNames.length);
@@ -105,15 +105,13 @@ describe('dispatch', () => {
       expect(mutationNames.length).toBe(spec.mutationCount);
     });
 
-    it('passes the kind ("query"|"mutation") to __unraidCallLocal so colliding names dispatch correctly', () => {
+    it('passes the kind ("query"|"mutation") to __wrapOp so colliding names dispatch correctly', () => {
       const prelude = buildUnraidPrelude(spec);
       // Sanity: the bundled SDL has at least one name (e.g. `array`) that
       // appears as both a query and a mutation. The prelude must include
-      // the kind in every dispatch call so the host picks the right one.
-      expect(prelude).toMatch(/__unraidCallLocal\("array", "query",/);
-      expect(prelude).toMatch(/__unraidCallLocal\("array", "mutation",/);
-      // No legacy two-arg form should remain.
-      expect(prelude).not.toMatch(/__unraidCallLocal\([^,]+, JSON\.stringify/);
+      // the kind so the host picks the right operation.
+      expect(prelude).toMatch(/ns\.query\.array = __wrapOp\("array", "query"\)/);
+      expect(prelude).toMatch(/ns\.mutation\.array = __wrapOp\("array", "mutation"\)/);
     });
   });
 });

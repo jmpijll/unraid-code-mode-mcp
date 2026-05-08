@@ -4,14 +4,14 @@
  * extraction. Subclasses inject globals via `setupContext()`.
  */
 
-import {
-  getQuickJS,
-  shouldInterruptAfterDeadline,
-  type QuickJSContext,
-  type QuickJSHandle,
-  type QuickJSRuntime,
-  type QuickJSWASMModule,
-} from 'quickjs-emscripten';
+import { shouldInterruptAfterDeadline } from 'quickjs-emscripten-core';
+import type {
+  QuickJSContext,
+  QuickJSHandle,
+  QuickJSRuntime,
+  QuickJSWASMModule,
+} from 'quickjs-emscripten-core';
+import { getQuickJSSyncModule } from './module.js';
 import {
   DEFAULT_LIMITS,
   MAX_LOG_ENTRIES,
@@ -20,12 +20,12 @@ import {
 } from './limits.js';
 import type { ExecuteResult, LogEntry } from './types.js';
 
-let quickJSModule: QuickJSWASMModule | null = null;
-
-/** Get or initialize the shared QuickJS WASM module (singleton). */
+/**
+ * Pre-warm the QuickJS module at startup so the first execute/search call
+ * doesn't pay the WASM-load latency.
+ */
 export async function getQuickJSModule(): Promise<QuickJSWASMModule> {
-  quickJSModule ??= await getQuickJS();
-  return quickJSModule;
+  return getQuickJSSyncModule();
 }
 
 export abstract class BaseSyncExecutor {
@@ -40,7 +40,7 @@ export abstract class BaseSyncExecutor {
     const logs: LogEntry[] = [];
     const warnings: string[] = [];
 
-    const quickJS = await getQuickJSModule();
+    const quickJS = await getQuickJSSyncModule();
     const runtime = quickJS.newRuntime();
     const context = runtime.newContext();
 
@@ -134,11 +134,7 @@ export function setupConsole(context: QuickJSContext, logs: LogEntry[]): void {
   consoleObj.dispose();
 }
 
-export function injectJsonValue(
-  context: QuickJSContext,
-  globalName: string,
-  value: unknown,
-): void {
+export function injectJsonValue(context: QuickJSContext, globalName: string, value: unknown): void {
   const json = JSON.stringify(value);
   const result = context.evalCode(`(${json})`);
   if (result.error) {

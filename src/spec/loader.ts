@@ -123,9 +123,7 @@ export async function loadUnraidSpec(opts: LoadUnraidSpecOptions): Promise<Proce
  * no Unraid credentials are configured (multi-tenant scaffolding) and as a
  * last-resort when live introspection fails.
  */
-export async function loadFallbackSpec(
-  namespace: Namespace = 'local',
-): Promise<ProcessedSpec> {
+export async function loadFallbackSpec(namespace: Namespace = 'local'): Promise<ProcessedSpec> {
   const cacheKey = `${namespace}:fallback`;
   const cached = memoryCache.get(cacheKey);
   if (cached) return cached;
@@ -133,11 +131,11 @@ export async function loadFallbackSpec(
   const sdlPath = resolve(__dirname, 'local-fallback.graphql');
   if (!existsSync(sdlPath)) {
     throw new Error(
-      `Bundled SDL fallback missing at ${sdlPath}. ` +
-        'Run `npm run update-spec` to generate it.',
+      `Bundled SDL fallback missing at ${sdlPath}. ` + 'Run `npm run update-spec` to generate it.',
     );
   }
   const sdl = await readFile(sdlPath, 'utf-8');
+  const pinnedTag = parsePinnedTag(sdl);
   const schema = buildSchema(sdl, { assumeValidSDL: true });
   const introspection = introspectionFromSchema(schema) as unknown as IntrospectionResult;
 
@@ -145,8 +143,10 @@ export async function loadFallbackSpec(
   const queryCount = built.operations.filter((o) => o.kind === 'query').length;
   const mutationCount = built.operations.filter((o) => o.kind === 'mutation').length;
   const processed: ProcessedSpec = {
-    sourceUrl: 'embedded:local-fallback.graphql',
-    version: 'fallback',
+    sourceUrl: pinnedTag
+      ? `embedded:local-fallback.graphql (unraid/api ${pinnedTag})`
+      : 'embedded:local-fallback.graphql',
+    version: pinnedTag ? `fallback@${pinnedTag}` : 'fallback',
     title: 'Unraid GraphQL API (fallback)',
     namespace,
     operations: built.operations,
@@ -156,6 +156,16 @@ export async function loadFallbackSpec(
   };
   memoryCache.set(cacheKey, processed);
   return processed;
+}
+
+/**
+ * Pull `# Pinned tag: vX.Y.Z` out of the bundled SDL header so the spec we
+ * surface to the LLM (and to anyone reading the MCP tool descriptors)
+ * advertises the actual upstream release the schema came from.
+ */
+function parsePinnedTag(sdl: string): string | undefined {
+  const m = /^#\s*Pinned tag:\s*(\S+)\s*$/m.exec(sdl);
+  return m?.[1];
 }
 
 /** Drop all cached specs (forces re-fetch on next access). */
@@ -176,9 +186,7 @@ interface FetchIntrospectionResult {
   sourceUrl: string;
 }
 
-async function fetchIntrospection(
-  args: FetchIntrospectionArgs,
-): Promise<FetchIntrospectionResult> {
+async function fetchIntrospection(args: FetchIntrospectionArgs): Promise<FetchIntrospectionResult> {
   const url = `${args.baseUrl.replace(/\/+$/, '')}/graphql`;
   const res = await undiciFetch(url, {
     method: 'POST',
@@ -192,20 +200,67 @@ async function fetchIntrospection(
     signal: AbortSignal.timeout(30_000),
   });
 
+  // Read body up front so we can surface GraphQL error envelopes even on
+  // 4xx responses (Unraid returns introspection-disabled as an HTTP 400
+  // with a structured GraphQL error body).
+  let bodyText = '';
+  try {
+    bodyText = await res.text();
+  } catch {
+    bodyText = '';
+  }
+  let bodyJson: { data?: IntrospectionResult; errors?: unknown } | undefined;
+  try {
+    bodyJson = bodyText ? (JSON.parse(bodyText) as typeof bodyJson) : undefined;
+  } catch {
+    bodyJson = undefined;
+  }
+
   if (!res.ok) {
+    const detail = describeGraphqlErrors(bodyJson?.errors);
+    const introspectionDisabled = detail.includes('introspection') || detail.includes('__schema');
+    const hint = introspectionDisabled
+      ? 'Introspection is disabled on this Unraid server. The MCP server will fall back to the bundled SDL — that is fine for most use. To enable live introspection, run `unraid-api developer --sandbox true` on the server (or toggle Settings → Management Access → Developer Options → GraphQL Sandbox).'
+      : 'Check UNRAID_BASE_URL, UNRAID_API_KEY, and (if on a *.unraid.net LAN cert) UNRAID_CA_CERT_PATH / UNRAID_INSECURE.';
     throw new Error(
-      `Introspection request failed: HTTP ${String(res.status)} ${res.statusText}. ` +
-        'Check UNRAID_BASE_URL, UNRAID_API_KEY, and (if on a *.unraid.net LAN cert) UNRAID_CA_CERT_PATH / UNRAID_INSECURE.',
+      `Introspection request failed: HTTP ${String(res.status)} ${res.statusText}` +
+        (detail ? ` — ${detail}` : '') +
+        `. ${hint}`,
     );
   }
-  const body = (await res.json()) as { data?: IntrospectionResult; errors?: unknown };
-  if (body.errors) {
-    throw new Error(`GraphQL introspection returned errors: ${JSON.stringify(body.errors)}`);
+  if (bodyJson?.errors) {
+    throw new Error(
+      `GraphQL introspection returned errors: ${describeGraphqlErrors(bodyJson.errors) || JSON.stringify(bodyJson.errors)}`,
+    );
   }
-  if (!body.data?.__schema) {
+  if (!bodyJson?.data?.__schema) {
     throw new Error('GraphQL introspection returned no __schema payload');
   }
-  return { introspection: body.data, sourceUrl: url };
+  return { introspection: bodyJson.data, sourceUrl: url };
+}
+
+/**
+ * Pull a human-readable summary out of a GraphQL `errors[]` envelope so
+ * the introspection-fail path can show the actual server reason instead
+ * of an opaque "HTTP 400". Mirrors the formatter in `src/client/http.ts`
+ * but is safe to call on `unknown` (so we can use it on raw JSON).
+ */
+function describeGraphqlErrors(errors: unknown): string {
+  if (!Array.isArray(errors) || errors.length === 0) return '';
+  const summarized = errors.slice(0, 3).map((e) => {
+    if (!e || typeof e !== 'object') return String(e);
+    const eo = e as Record<string, unknown>;
+    const msg = typeof eo['message'] === 'string' ? eo['message'] : 'unknown error';
+    const ext = eo['extensions'];
+    let code: string | undefined;
+    if (ext && typeof ext === 'object') {
+      const c = (ext as Record<string, unknown>)['code'];
+      if (typeof c === 'string') code = c;
+    }
+    return code ? `${msg} [${code}]` : msg;
+  });
+  const more = errors.length > 3 ? ` (+${String(errors.length - 3)} more)` : '';
+  return `GraphQL: ${summarized.join(' | ')}${more}`;
 }
 
 function buildDispatcher(

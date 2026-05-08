@@ -214,7 +214,10 @@ function formatHttpError(status: number, path: string, body: unknown): string {
         }
         return String(e);
       });
-      const more = (b['errors'] as unknown[]).length > 5 ? ` (+${String((b['errors'] as unknown[]).length - 5)} more)` : '';
+      const more =
+        (b['errors'] as unknown[]).length > 5
+          ? ` (+${String((b['errors'] as unknown[]).length - 5)} more)`
+          : '';
       detail = `: GraphQL ${errs.join(' | ')}${more}`;
     } else {
       const msg = b['message'] ?? b['error'];

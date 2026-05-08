@@ -35,10 +35,7 @@ export function getOperation(
 }
 
 /** Find every operation whose name contains the given substring (case-insensitive). */
-export function findOperationsByName(
-  spec: ProcessedSpec,
-  substring: string,
-): IndexedOperation[] {
+export function findOperationsByName(spec: ProcessedSpec, substring: string): IndexedOperation[] {
   const q = substring.toLowerCase();
   return spec.operations.filter((o) => o.name.toLowerCase().includes(q));
 }

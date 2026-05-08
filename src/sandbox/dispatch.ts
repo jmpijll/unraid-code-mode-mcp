@@ -21,11 +21,7 @@
  */
 
 import type { GraphqlClient } from '../client/graphql.js';
-import type {
-  GraphqlRequestParams,
-  UnraidRequestParams,
-  UnraidResponse,
-} from '../client/types.js';
+import type { GraphqlRequestParams, UnraidRequestParams, UnraidResponse } from '../client/types.js';
 import { getOperation, stringifyTypeRef } from '../spec/index.js';
 import { sanitizeIdentifier } from './../spec/index-builder.js';
 import type { ArgInfo, IndexedOperation, ProcessedSpec, TypeRef } from '../types/spec.js';
@@ -39,9 +35,7 @@ export class UnknownOperationError extends Error {
     public readonly operationName: string,
     public readonly kind?: 'query' | 'mutation',
   ) {
-    super(
-      `No ${kind ?? 'operation'} "${operationName}" in unraid.${namespace} schema`,
-    );
+    super(`No ${kind ?? 'operation'} "${operationName}" in unraid.${namespace} schema`);
   }
 }
 
@@ -152,15 +146,11 @@ export function buildOperationDocument(
   fields: string | string[] | undefined,
 ): string {
   const safeOpName = sanitizeIdentifier(`${op.kind}_${op.name}`);
-  const argsList = op.args
-    .map((a) => `$${a.name}: ${stringifyTypeRef(a.type)}`)
-    .join(', ');
+  const argsList = op.args.map((a) => `$${a.name}: ${stringifyTypeRef(a.type)}`).join(', ');
   const argsApply = op.args.map((a) => `${a.name}: $${a.name}`).join(', ');
 
-  const head =
-    `${op.kind} ${safeOpName}` + (argsList.length > 0 ? `(${argsList})` : '');
-  const fieldCall =
-    op.args.length > 0 ? `${op.name}(${argsApply})` : op.name;
+  const head = `${op.kind} ${safeOpName}` + (argsList.length > 0 ? `(${argsList})` : '');
+  const fieldCall = op.args.length > 0 ? `${op.name}(${argsApply})` : op.name;
 
   const namedReturn = unwrapToNamed(op.returnType);
   const isLeaf =
@@ -248,39 +238,58 @@ export function buildUnraidPrelude(localSpec: ProcessedSpec | undefined): string
   const usedQueryNames = new Set<string>();
   const usedMutationNames = new Set<string>();
 
+  // The host bridges (`__unraidCallLocal*`) are SYNCHRONOUS QuickJS host
+  // functions that take a sandbox-side `(resolve, reject)` pair plus call
+  // arguments. The host kicks off the actual API call in its event loop
+  // and resolves/rejects the sandbox Promise when the work settles. We use
+  // this synchronous bridge instead of `newAsyncifiedFunction` because the
+  // upstream asyncify shim corrupts the WASM heap on multi-await scripts
+  // (see execute-executor.ts header for the upstream issue links).
+  //
+  // Resolution payload is a JSON string; sandbox-side `__parseHostJson`
+  // converts it to a JS value so consumers see idiomatic objects.
   lines.push('unraid.local = (function() {');
-  lines.push('  var ns = {');
+  lines.push('  function __parseHostJson(s) {');
+  lines.push('    if (typeof s !== "string") return s;');
+  lines.push('    if (s.length === 0) return null;');
+  lines.push('    try { return JSON.parse(s); } catch (e) { return s; }');
+  lines.push('  }');
+  lines.push('  function __wrap1(fn) { return function(payload) {');
+  lines.push('    var json = JSON.stringify(payload || {});');
+  lines.push('    return new Promise(function(resolve, reject) {');
+  lines.push('      fn(json, function(s){ resolve(__parseHostJson(s)); }, reject);');
+  lines.push('    });');
+  lines.push('  }; }');
+  lines.push('  function __wrapOp(name, kind) { return function(payload) {');
+  lines.push('    var json = JSON.stringify(payload || {});');
+  lines.push('    return new Promise(function(resolve, reject) {');
+  lines.push('      __unraidCallLocal(name, kind, json,');
+  lines.push('        function(s){ resolve(__parseHostJson(s)); }, reject);');
+  lines.push('    });');
+  lines.push('  }; }');
+  lines.push('  var ns = {};');
   lines.push(
-    `    spec: ${JSON.stringify({
+    `  ns.spec = ${JSON.stringify({
       title: localSpec.title,
       version: localSpec.version,
       sourceUrl: localSpec.sourceUrl,
       queryCount: localSpec.queryCount,
       mutationCount: localSpec.mutationCount,
-    })},`,
+    })};`,
   );
-  lines.push(
-    '    graphql: function(args) { return __unraidCallLocalGraphql(JSON.stringify(args || {})); },',
-  );
-  lines.push(
-    '    request: function(args) { return __unraidRawLocal(JSON.stringify(args || {})); }',
-  );
-  lines.push('  };');
+  lines.push('  ns.graphql = __wrap1(__unraidCallLocalGraphql);');
+  lines.push('  ns.request = __wrap1(__unraidRawLocal);');
 
   lines.push('  ns.query = {};');
   for (const op of queries) {
     const jsName = uniqueIdentifier(op.jsName, usedQueryNames);
-    lines.push(
-      `  ns.query.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, "query", JSON.stringify(payload || {})); };`,
-    );
+    lines.push(`  ns.query.${jsName} = __wrapOp(${JSON.stringify(op.name)}, "query");`);
   }
 
   lines.push('  ns.mutation = {};');
   for (const op of mutations) {
     const jsName = uniqueIdentifier(op.jsName, usedMutationNames);
-    lines.push(
-      `  ns.mutation.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, "mutation", JSON.stringify(payload || {})); };`,
-    );
+    lines.push(`  ns.mutation.${jsName} = __wrapOp(${JSON.stringify(op.name)}, "mutation");`);
   }
 
   lines.push('  return ns;');

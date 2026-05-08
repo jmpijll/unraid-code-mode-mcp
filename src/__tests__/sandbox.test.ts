@@ -72,9 +72,7 @@ describe('ExecuteExecutor', () => {
           rawHttp: fakeClient.rawHttp,
         } as unknown as GraphqlClient;
       },
-      ...(opts.maxCalls !== undefined
-        ? { limits: { maxCallsPerExecute: opts.maxCalls } }
-        : {}),
+      ...(opts.maxCalls !== undefined ? { limits: { maxCallsPerExecute: opts.maxCalls } } : {}),
     });
   }
 
@@ -97,9 +95,7 @@ describe('ExecuteExecutor', () => {
 
   it('tags missing-selection errors clearly', async () => {
     const executor = buildExecutorWithMockClient(() => null);
-    const result = await executor.execute(
-      `(async () => unraid.local.query.info({}))()`,
-    );
+    const result = await executor.execute(`(async () => unraid.local.query.info({}))()`);
     expect(result.ok).toBe(false);
     expect(result.error).toContain('[unraid.local.graphql]');
   });

@@ -13,15 +13,7 @@ export type Namespace = 'local' | 'connect';
 /** Compact representation of a GraphQL type reference (no recursion via $ref). */
 export interface TypeRef {
   /** GraphQL type kind. */
-  kind:
-    | 'SCALAR'
-    | 'OBJECT'
-    | 'INTERFACE'
-    | 'UNION'
-    | 'ENUM'
-    | 'INPUT_OBJECT'
-    | 'LIST'
-    | 'NON_NULL';
+  kind: 'SCALAR' | 'OBJECT' | 'INTERFACE' | 'UNION' | 'ENUM' | 'INPUT_OBJECT' | 'LIST' | 'NON_NULL';
   /** Named-type name when applicable (always set on the leaf node). */
   name?: string;
   /** Wrapped inner type for LIST / NON_NULL kinds. */

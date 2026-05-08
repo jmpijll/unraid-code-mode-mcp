@@ -40,7 +40,14 @@ send({ jsonrpc: '2.0', method: 'notifications/initialized' });
 await new Promise((r) => setTimeout(r, 200));
 send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: toolName, arguments: JSON.parse(argsJson) } });
 
-await new Promise((r) => setTimeout(r, 4000));
+// Wait for the call response (id=2) or hit a hard cap. The sandbox's own
+// timeout caps server-side work; we just need to outlast that plus
+// startup overhead.
+const HARD_CAP_MS = Number(process.env.MCP_CALL_TIMEOUT_MS ?? 60_000);
+const start = Date.now();
+while (!responses.find((r) => r.id === 2) && Date.now() - start < HARD_CAP_MS) {
+  await new Promise((r) => setTimeout(r, 100));
+}
 child.stdin.end();
 await new Promise((r) => child.on('exit', r));
 
