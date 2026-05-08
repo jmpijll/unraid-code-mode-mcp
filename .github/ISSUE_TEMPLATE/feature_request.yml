@@ -1,0 +1,75 @@
+name: Feature request
+description: Add a new capability or surface to the MCP server.
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The strongest feature requests cite
+        the underlying GraphQL field (or REST endpoint) we'd be wrapping
+        and explain the use case.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem you're trying to solve?
+      placeholder: |
+        "I want my agent to start a parity check after a disk replacement,
+        but `unraid.local.mutation.*` doesn't seem to expose a clean way to
+        do that."
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: Underlying GraphQL field (or REST endpoint)
+      description: |
+        The schema field name, args, and link to the upstream Unraid docs
+        if there is one. If it's a REST endpoint exposed by the unraid-api
+        outside GraphQL, give the path + method instead.
+      placeholder: |
+        mutation.startParityCheck(input: { correcting: Boolean })
+        https://docs.unraid.net/category/api/
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which sandbox surface
+      options:
+        - "unraid.local.query.*"
+        - "unraid.local.mutation.*"
+        - "unraid.local.graphql"
+        - "unraid.local.request"
+        - "search tool ergonomics"
+        - "execute tool ergonomics"
+        - "MCP transport / multi-tenant"
+        - "Cloudflare Workers entry"
+        - "New surface entirely"
+    validations:
+      required: true
+
+  - type: textarea
+    id: shape
+    attributes:
+      label: Proposed call shape (optional)
+      description: How you'd ideally invoke this from inside `execute`.
+      render: javascript
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and didn't find this
+          required: true
+        - label: This is something the Unraid API actually supports today (not a request to Lime Technology)
+          required: true

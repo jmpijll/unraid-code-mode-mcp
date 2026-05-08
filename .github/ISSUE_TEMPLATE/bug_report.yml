@@ -1,0 +1,125 @@
+name: Bug report
+description: Something is broken in the MCP server itself.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. Before you do:
+
+        - **Don't paste API keys, server fingerprints, MAC
+          addresses, or production share names.** Redact them.
+        - **Security issues:** don't use this form. See
+          [SECURITY.md](https://github.com/jmpijll/unraid-code-mode-mcp/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what went wrong.
+      placeholder: "When I call `unraid.local.query.dockerContainers({...})`, I get …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: |
+        The exact JS you ran in `execute`, plus any args. Use a
+        fenced code block.
+      placeholder: |
+        ```js
+        const r = await unraid.local.query.info({ fields: ['os { distro }'] });
+        return r;
+        ```
+      render: javascript
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What you thought would happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: |
+        What happened. Include the full error message if there was one.
+        If there was a stack trace, paste it.
+    validations:
+      required: true
+
+  - type: input
+    id: server_version
+    attributes:
+      label: MCP server version
+      description: From `package.json` or `git rev-parse --short HEAD`.
+      placeholder: "v0.1.0 (commit abcdef0)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      multiple: true
+      options:
+        - "unraid.local.graphql"
+        - "unraid.local.query.*"
+        - "unraid.local.mutation.*"
+        - "unraid.local.request"
+        - "search tool"
+        - "execute tool itself"
+        - "MCP transport (stdio / HTTP)"
+        - "Cloudflare Workers entry"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: unraid_version
+    attributes:
+      label: Unraid version
+      description: |
+        From the web UI footer, or via the GraphQL `info { versions { unraid api } }` query.
+      placeholder: "Unraid 7.2.0, unraid-api 4.x"
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware (optional)
+      placeholder: "Custom build / x86_64, etc."
+
+  - type: input
+    id: node_os
+    attributes:
+      label: Node.js + OS
+      placeholder: "Node 22.10 on macOS 25; Node 20 on Ubuntu 24"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: |
+        Anything from stderr or the agent transcript. Redact: API keys,
+        MAC addresses, LAN IPs, share names you don't want public.
+      render: text
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have searched existing issues for this bug
+          required: true
+        - label: I have redacted secrets and PII
+          required: true
+        - label: I have read [SECURITY.md](https://github.com/jmpijll/unraid-code-mode-mcp/blob/main/SECURITY.md) and confirmed this is not a security issue
+          required: true
