@@ -1,0 +1,149 @@
+name: Verification report
+description: |
+  You wired this MCP into an agent platform we haven't verified yet (or
+  re-verified one we already had). Tell us what worked and what didn't.
+title: "[verify] "
+labels: ["verification", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This is the most useful kind of issue right now.** All live
+        verification we have so far is through `scripts/mcp-call.mjs`
+        driving the stdio transport directly against one Unraid 7.2
+        box (the maintainer's homelab). Everything else — Cursor,
+        Claude Code, Claude Desktop, VS Code + Copilot, Codex CLI,
+        Continue, Cline, opencode, Aider, Zed, the MCP Inspector
+        (CLI + UI), the Streamable HTTP transport in multi-tenant
+        mode, the Cloudflare Worker entry — is theoretically wired
+        but **NOT verified by us**.
+
+        Submit a verification report whether things worked OR didn't.
+        Both are useful.
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - "Worked end-to-end — LLM successfully called the MCP and got real data back"
+        - "Partial — protocol-level (search/execute) works, but LLM-mediated invocation didn't trigger"
+        - "Broken — MCP didn't load / connection failed"
+        - "Other (explain below)"
+    validations:
+      required: true
+
+  - type: input
+    id: agent
+    attributes:
+      label: Agent / client
+      description: The tool that hosts the LLM and speaks MCP.
+      placeholder: "Cursor 0.45 / Claude Code 1.0.4 / Claude Desktop 0.10.x / VS Code 1.95 + Copilot Chat / Codex CLI 0.4 / Continue 0.10 / Cline 3.x / opencode 1.14.30 / MCP Inspector 0.20.0 / custom"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "claude-sonnet-4.6 / claude-opus-4.6 / gpt-4o / gpt-5 / deepseek-v4 / gemini-2.5-pro / llama-3.3 / etc."
+    validations:
+      required: true
+
+  - type: input
+    id: server_version
+    attributes:
+      label: Server version
+      placeholder: "v0.1.0-beta.1 / commit abcdef0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - "stdio"
+        - "Streamable HTTP"
+        - "Cloudflare Workers (remote HTTP)"
+    validations:
+      required: true
+
+  - type: input
+    id: unraid_version
+    attributes:
+      label: Unraid version
+      description: |
+        From the Unraid web UI footer, or run via `execute`:
+        `unraid.local.query.info({ fields: 'os { distro release } versions { unraid }' })`
+      placeholder: "Unraid 7.2.0-rc.x / 7.2.1 / 7.3.0-rc.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: How you wired it up
+      description: |
+        Paste the relevant snippet from your agent's config (with
+        secrets redacted). E.g. claude_desktop_config.json,
+        .vscode/mcp.json, .cursor/mcp.json, your .mcp.json, etc.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Prompt(s) you tested
+      description: |
+        Paste the user-side prompt(s) you sent to the agent.
+      placeholder: |
+        "List every share on this Unraid box and report the free / used split."
+    validations:
+      required: true
+
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Transcript / output
+      description: |
+        Sanitized output from the agent. Redact: API keys, real
+        hostnames, MAC addresses, IPs, share names, VM UUIDs, container
+        names if they're identifying.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: friction
+    attributes:
+      label: Friction points
+      description: |
+        Anything we should fix or document differently? Is there a
+        platform-specific gotcha you'd warn the next person about?
+
+  - type: checkboxes
+    id: surfaces
+    attributes:
+      label: Which surfaces did you exercise?
+      options:
+        - label: "search tool"
+        - label: "execute tool"
+        - label: "unraid.local.query.* (typed query)"
+        - label: "unraid.local.mutation.* (typed mutation)"
+        - label: "unraid.local.graphql({ ... }) (raw GraphQL)"
+        - label: "unraid.local.request({ ... }) (raw HTTP escape hatch)"
+        - label: "Multi-tenant headers (X-Unraid-* per request)"
+        - label: "Sequential awaits inside one execute()"
+        - label: "Promise.all inside one execute()"
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have redacted API keys, hostnames, MACs, IPs, share names, VM UUIDs, and PII
+          required: true
+        - label: I read [README's project status](https://github.com/jmpijll/unraid-code-mode-mcp#project-status) before filing
+          required: true

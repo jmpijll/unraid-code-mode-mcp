@@ -1,5 +1,13 @@
 # Usage guide
 
+> **Beta.** This server is in public beta. The two-tool surface, the
+> sandbox bridge, and the typed dispatcher are stable enough to use
+> day-to-day, but only one Unraid 7.2 box has been live-verified so
+> far and only the `search` / `execute` reads + the VM start/stop
+> mutation cycle have been exercised end-to-end. See the
+> [README's project status](../README.md#project-status) for the full
+> verified-vs-not breakdown.
+
 ## The two tools
 
 ### `search`

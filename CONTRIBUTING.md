@@ -1,6 +1,25 @@
-# Contributing
+# Contributing to unraid-code-mode-mcp
 
-Thanks for considering a contribution. This project is small and the contributor flow is intentionally lightweight.
+Thanks for thinking about it. This is a public beta and we genuinely
+need help — verification reports, bug reports, edge cases against real
+Unraid hardware, and PRs.
+
+## Project posture
+
+- **Status: beta.** The package is `"private": true` in `package.json`. We will lift that and publish to npm when we tag `1.0.0`. Until then, install from source.
+- **Single maintainer.** Response time is best-effort. If you don't hear back in a week, ping the issue.
+- **Honest scope.** We say what we've verified and what we haven't — read the [README's Project status](README.md#project-status) before filing.
+
+## Filing issues
+
+Use the right template:
+
+- **Bug report** — something works wrong against the documented surface. Use the bug report template; include the exact JS you ran in `execute`, the Unraid version (visible in the web UI footer or via `unraid.local.query.info({ fields: 'os { distro release } versions { unraid }' })`), and a redacted log. **Don't paste API keys.**
+- **Verification report** — you tested with an agent platform we haven't verified yet (Cursor, Claude Code, Claude Desktop, VS Code Copilot, Codex CLI, Continue, Cline, opencode, MCP Inspector, Aider, Zed, …). This is the most helpful kind of issue right now. The template has a checklist.
+- **Feature request** — something the Unraid GraphQL API exposes that we don't surface well. Cite the operation (query/mutation name + the upstream type) and explain the use case.
+- **Security issue** — DO NOT open a public issue. See [`SECURITY.md`](SECURITY.md).
+
+Don't open blank issues — they're disabled.
 
 ## Development setup
 

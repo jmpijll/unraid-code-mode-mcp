@@ -1,5 +1,14 @@
 # Deployment
 
+> **Beta.** Of the deployment paths described below, only **local
+> stdio** has been live-verified against a real Unraid box. The
+> Streamable HTTP transport works in tests but has not been exercised
+> behind a real reverse proxy with rotating per-tenant credentials.
+> The Cloudflare Workers entry is **scaffolded but not deployed** —
+> the Web `Request`/`Response` ↔ MCP SDK Node-stream adapter is the
+> open work. Verification reports for any of these paths are very
+> welcome (see the [README's project status](../README.md#project-status)).
+
 ## Local (development)
 
 ```bash

@@ -1,10 +1,51 @@
 # unraid-code-mode-mcp
 
+[![CI](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](#project-status)
+[![Version: v0.1.0-beta.1](https://img.shields.io/badge/version-v0.1.0--beta.1-blue.svg)](CHANGELOG.md)
+
 A code-mode MCP server for the **[Unraid](https://unraid.net) 7.2+ GraphQL API**. Exposes two MCP tools — `search` and `execute` — that let an LLM agent introspect and call any Unraid GraphQL field by writing JavaScript that runs inside a sandboxed QuickJS WASM context.
 
 Built as the GraphQL-flavoured sibling of [unifi-code-mode-mcp](https://github.com/jmpijll/unifi-code-mode-mcp) and [fortimanager-code-mode-mcp](https://github.com/jmpijll/fortimanager-code-mode-mcp). Same architecture, same sandbox model, adapted to GraphQL introspection instead of OpenAPI.
 
-> **Status: v0.1.** All 56 unit + integration tests pass, plus a `npm run test:sandbox` smoke check for the QuickJS host bridge. Verified end-to-end against a real Unraid 7.2 box: reads (`info`, `array`, `shares`, `vms`, `docker`, `online`), VM start/stop mutations, and arbitrary multi-step JS with sequential and parallel awaits. The bundled SDL is pinned to a tagged `unraid/api` release (no `main`-drift), and the runtime introspection-disabled fallback path is exercised by tests.
+> ## Project status
+>
+> **This is a public beta. Install from source. Not on npm yet.**
+>
+> The server boots, both tools work, and the test suite is green
+> (56/56 unit + integration tests across spec loader, dispatcher,
+> sandbox, HTTP client, multi-tenant context, and server transports).
+> A standalone `npm run test:sandbox` script exercises the QuickJS
+> sync + Promise-callback host bridge with 25 sequential awaits, a
+> 10-way `Promise.all`, mixed sequential/parallel patterns, and error
+> propagation — these are the patterns LLMs actually emit, and they
+> are the regression bar for the bridge.
+>
+> **Verified live against a single real Unraid 7.2 box** (the
+> maintainer's homelab) via `scripts/mcp-call.mjs` driving the stdio
+> transport directly: `info`, `array`, `shares`, `vms`, `docker`, and
+> `online` reads succeed; the VM `SHUTOFF → RUNNING → SHUTOFF` cycle
+> via `vmStart` / `vmStop` mutations succeeds; sequential awaits and
+> `Promise.all` both work end-to-end with real GraphQL latency; and
+> the bundled SDL fallback path (introspection disabled) returns a
+> human-readable diagnostic with a remediation hint instead of an
+> opaque `HTTP 400`. The bundled SDL is pinned to a tagged
+> [`unraid/api`](https://github.com/unraid/api) release
+> (currently `v4.33.0`, no `main`-drift) and the introspection-disabled
+> fallback is exercised by unit tests.
+>
+> **NOT verified by us** (and where help is welcome): every
+> agent / IDE client beyond the raw stdio harness — Cursor (chat panel),
+> Claude Code, Claude Desktop, VS Code + Copilot, Codex CLI, Continue,
+> Cline, opencode, Aider, Zed, MCP Inspector (CLI + UI); the Streamable
+> HTTP transport in multi-tenant mode; the Cloudflare Workers entry
+> (scaffolded but not deployed); any non-VM mutation
+> (Docker container start/stop, share/disk operations, parity ops);
+> any Unraid box other than the maintainer's. We need testers — please
+> file [verification reports](.github/ISSUE_TEMPLATE/verification_report.yml)
+> and [bug reports](.github/ISSUE_TEMPLATE/bug_report.yml) with whatever
+> you find. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the rules.
 
 ## Why "code mode"?
 
@@ -155,11 +196,39 @@ Run with `MCP_TRANSPORT=http` and **without** env credentials. The MCP HTTP tran
 
 Origin allowlist defaults to localhost; tune via `MCP_HTTP_ALLOWED_ORIGINS`. See [docs/multi-tenant.md](docs/multi-tenant.md).
 
+## Verification status
+
+What we have **directly verified** so far:
+
+| Layer | How | Result |
+|---|---|---|
+| Unit tests | Vitest, 56 specs across spec loader, dispatcher, sandbox, HTTP client, multi-tenant context, and server transports | ✅ all green |
+| Integration tests | In-process `node:http` GraphQL mock + `InMemoryTransport` against `createMcpServer`; covers sequential awaits, `Promise.all`, mixed query/mutation/raw GraphQL, error propagation, and the per-execute call budget | ✅ green |
+| QuickJS host-bridge stress | `npm run test:sandbox` — 25 sequential awaits, 10-way `Promise.all`, mixed patterns, rejection propagation through `await` | ✅ green; this is the regression bar after the asyncify → sync + Promise-callback rewrite |
+| SDL fallback (introspection disabled) | Server boots without an Unraid box, parses bundled `src/spec/local-fallback.graphql` (pinned to `unraid/api@v4.33.0`), `search` is immediately usable; runtime fallback path also exercised by unit tests against a mock that returns `INTROSPECTION_DISABLED` | ✅ green; the `INTROSPECTION_DISABLED` error returns a human-readable diagnostic with a remediation hint (`unraid-api developer --sandbox true`) instead of `HTTP 400` |
+| Live read sweep on a real Unraid 7.2 box | `scripts/mcp-call.mjs` driving stdio transport against the maintainer's homelab: `info`, `array`, `shares`, `vms`, `docker`, `online` | ✅ all queries returned real data; sequential awaits and `Promise.all` both worked end-to-end with real GraphQL latency |
+| Live mutation round-trip on the same box | VM `SHUTOFF → RUNNING → SHUTOFF` cycle via `vmStart` / `vmStop` mutations, with state polled via `vms.domain.state` between transitions | ✅ full cycle completed; error propagation verified by attempting `vmStart` on an already-running VM (returns `Failed to set VM state: Invalid state transition from RUNNING to RUNNING` cleanly through `await`) |
+| Linter + formatter + typecheck | `npm run lint` / `npm run format:check` / `npm run typecheck` | ✅ clean |
+
+What is **not yet verified** (and where help is welcome):
+
+- **Any agent / IDE client.** All live verification so far has been through `scripts/mcp-call.mjs` driving the stdio transport directly. Cursor (chat panel), Claude Code, Claude Desktop, VS Code + Copilot, Codex CLI, Continue, Cline, opencode, Aider, Zed, the MCP Inspector (CLI and UI) — all wired but **NOT verified by us**. End-to-end LLM-mediated invocation is the most useful thing testers can report on.
+- **Streamable HTTP transport in multi-tenant mode.** The transport is wired and unit-tested; a real multi-tenant deployment behind a reverse proxy with header-based credentials is not.
+- **Cloudflare Workers entry.** `cf-worker/` is scaffolded against `@cloudflare/codemode` but the Web `Request`/`Response` ↔ MCP SDK Node-stream adapter is not implemented, and the Worker is not deployed anywhere. Tracked in [`cf-worker/README.md`](cf-worker/README.md).
+- **Mutations beyond VM start/stop.** Docker container `start` / `stop`, parity check `start` / `cancel`, share / disk operations, user / API-key management, and the full mutation surface are wired through the typed dispatcher but **not live-verified**. Probing them blindly against live hardware is unsafe; we want testers with redundant homelabs.
+- **Unraid Connect cloud surface.** `unraid.connect.*` is reserved in `TenantContext` and not yet implemented. The current server only talks to a controller you can reach over the LAN.
+- **Real Unraid boxes other than the maintainer's homelab.** A single Unraid 7.2 box is not enough to generalise resilience claims — different array configs, plugin sets, network topologies, and Unraid versions will all surface different edge cases.
+- **Long-running soak / stability under sustained load.**
+
 ## Roadmap
 
-- Future `unraid.connect.*` namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.
-- Cloudflare Workers transport adapter (the bridge from Web `Request`/`Response` to the MCP SDK's Node `IncomingMessage`/`ServerResponse`). Tracked in `cf-worker/README.md`.
-- Auto-bump the bundled SDL pin via Dependabot-style PRs as new `unraid/api` releases ship.
+- **End-to-end LLM-mediated invocation verification** through at least Cursor, Claude Code, opencode, and the MCP Inspector. This is the gating item for `1.0.0`.
+- **Streamable HTTP multi-tenant deployment** verified against a real reverse proxy with rotating per-tenant credentials.
+- **Mutation verification matrix** beyond VM start/stop — Docker container lifecycle, parity checks, share/disk ops — once we have testers with redundant hardware.
+- **`unraid.connect.*`** namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.
+- **Cloudflare Workers transport adapter** (the bridge from Web `Request`/`Response` to the MCP SDK's Node `IncomingMessage`/`ServerResponse`). Tracked in [`cf-worker/README.md`](cf-worker/README.md).
+- **Auto-bump the bundled SDL pin** via Dependabot-style PRs as new `unraid/api` releases ship.
+- **NPM publish** — reserved for `1.0.0`. The package is `"private": true` until then.
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 {
   "name": "unraid-code-mode-mcp",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Code-mode MCP server for the Unraid 7.2+ GraphQL API. Two tools (search + execute) with QuickJS WASM sandbox plus an optional Cloudflare Workers entry. Single-user (env) and multi-user (per-request HTTP headers) modes.",
   "private": true,
   "type": "module",
