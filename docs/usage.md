@@ -122,6 +122,37 @@ return await unraid.local.mutation.archiveAll({});
 - Move to `execute` once you know what you want.
 - Both tools accept the same `code` input so the LLM can copy a query body straight from one to the other.
 
+## Multiple calls per `execute`: use `Promise.all`, not sequential `await`
+
+There is an upstream bug in `quickjs-emscripten` ≥ 0.30 where multiple **sequential** `await` calls on host-bridged async functions corrupt the QuickJS runtime ([quickjs-emscripten#258](https://github.com/justjake/quickjs-emscripten/issues/258), [#261](https://github.com/justjake/quickjs-emscripten/issues/261)). It surfaces as either an empty `""` result or a WASM `gc_decref_child` / `JS_FreeRuntime` assertion.
+
+Until the upstream fix lands, batch your calls with `Promise.all` (works perfectly):
+
+```js
+// Recommended — parallel and correct
+const [info, arr, online] = await Promise.all([
+  unraid.local.graphql({ query: 'query { info { os { distro } } }' }),
+  unraid.local.graphql({ query: 'query { array { state } }' }),
+  unraid.local.graphql({ query: 'query { online }' }),
+]);
+return { info, arr, online };
+```
+
+```js
+// Avoid — multiple sequential `await`s on unraid.local.* in one execute
+const a = await unraid.local.query.info({ fields: 'os { distro }' });
+const b = await unraid.local.query.array({ fields: 'state' });   // upstream bug
+return { a, b };
+```
+
+If you need values to depend on each other, prefer issuing two separate `execute` calls.
+
+## When introspection is disabled on the live server
+
+Unraid's GraphQL endpoint disables introspection unless you toggle `Settings → Management Access → Developer Options → GraphQL Sandbox` (or run `unraid-api developer --sandbox true`). When introspection is off, the loader falls back to the bundled SDL (`src/spec/local-fallback.graphql`, mirrored from `unraid/api`).
+
+That fallback is **schema-complete but may drift ahead of stable**: a few fields shipped on `unraid/api@main` (e.g. `info.versions { unraid api kernel }`, `info.memory { max total free }`) don't exist on Unraid 7.2 GA. The HTTP layer surfaces the live server's `GRAPHQL_VALIDATION_FAILED` messages so you can correct the selection — pick the working subset (`info { os { … } cpu { … } }`, `array { state }`, `shares { name free used size }`, `online`, etc.) and the typed dispatch path will work without any local changes.
+
 ## Limits
 
 - `MAX_CODE_SIZE` per call: 100 000 chars

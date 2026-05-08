@@ -104,5 +104,16 @@ describe('dispatch', () => {
       expect(queryNames.length).toBe(spec.queryCount);
       expect(mutationNames.length).toBe(spec.mutationCount);
     });
+
+    it('passes the kind ("query"|"mutation") to __unraidCallLocal so colliding names dispatch correctly', () => {
+      const prelude = buildUnraidPrelude(spec);
+      // Sanity: the bundled SDL has at least one name (e.g. `array`) that
+      // appears as both a query and a mutation. The prelude must include
+      // the kind in every dispatch call so the host picks the right one.
+      expect(prelude).toMatch(/__unraidCallLocal\("array", "query",/);
+      expect(prelude).toMatch(/__unraidCallLocal\("array", "mutation",/);
+      // No legacy two-arg form should remain.
+      expect(prelude).not.toMatch(/__unraidCallLocal\([^,]+, JSON\.stringify/);
+    });
   });
 });

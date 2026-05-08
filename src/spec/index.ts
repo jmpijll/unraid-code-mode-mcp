@@ -17,11 +17,20 @@ export {
   sanitizeIdentifier,
 } from './index-builder.js';
 
-/** Look up an operation by name (`info`, `array.start`, …). */
+/**
+ * Look up an operation by name (`info`, `array.start`, …).
+ *
+ * GraphQL allows the same field name to exist as both a query and a mutation
+ * (Unraid does this for `array`, `docker`, etc.), so when the caller knows
+ * which one it wants it can pass `kind` to disambiguate. Without `kind` the
+ * first match wins, which is fine for read-only schema exploration.
+ */
 export function getOperation(
   spec: ProcessedSpec,
   name: string,
+  kind?: IndexedOperation['kind'],
 ): IndexedOperation | undefined {
+  if (kind) return spec.operations.find((o) => o.name === name && o.kind === kind);
   return spec.operations.find((o) => o.name === name);
 }
 

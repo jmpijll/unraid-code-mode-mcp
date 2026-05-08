@@ -4,7 +4,7 @@ A code-mode MCP server for the **[Unraid](https://unraid.net) 7.2+ GraphQL API**
 
 Built as the GraphQL-flavoured sibling of [unifi-code-mode-mcp](https://github.com/jmpijll/unifi-code-mode-mcp) and [fortimanager-code-mode-mcp](https://github.com/jmpijll/fortimanager-code-mode-mcp). Same architecture, same sandbox model, adapted to GraphQL introspection instead of OpenAPI.
 
-> **Status: v0.1.** All 47 unit + integration tests pass against a mocked GraphQL server. Live verification against a real Unraid 7.2 server is still pending — the bundled schema is fetched verbatim from upstream `unraid/api`, but the loader's live path hasn't been exercised end-to-end yet. PRs and verification reports welcome.
+> **Status: v0.1.** All 49 unit + integration tests pass and the server has been smoke-tested end-to-end against a real Unraid 7.2 box (`info`, `array`, `shares`, `vms`, `docker`, `online`, plus parallel `Promise.all` reads). The introspection-disabled fallback path and the bundled-SDL drift handling are both exercised. See [docs/usage.md](docs/usage.md#multiple-calls-per-execute-use-promiseall-not-sequential-await) for one upstream caveat (sequential `await` inside one `execute` is broken in `quickjs-emscripten`; use `Promise.all` instead).
 
 ## Why "code mode"?
 
@@ -88,14 +88,27 @@ searchOperations('docker', 10).map(function (op) { return op.name + ' (' + op.ki
 getOperation('info');
 ```
 
-**Run a query:**
+**Run a query (verified live on Unraid 7.2):**
 
 ```js
 // execute tool
 const info = await unraid.local.query.info({
-  fields: ['os { distro release kernel }', 'versions { unraid api }', 'cpu { manufacturer brand cores }'].join(' '),
+  fields: ['os { distro release kernel uptime }', 'cpu { manufacturer brand cores threads }'].join(' '),
 });
 return info;
+```
+
+**Read multiple things in parallel (preferred over sequential `await`):**
+
+```js
+// execute tool
+const [info, arr, shares, online] = await Promise.all([
+  unraid.local.graphql({ query: 'query { info { os { distro release kernel } cpu { brand cores threads } } }' }),
+  unraid.local.graphql({ query: 'query { array { state } }' }),
+  unraid.local.graphql({ query: 'query { shares { name free used size } }' }),
+  unraid.local.graphql({ query: 'query { online }' }),
+]);
+return { info, arr, shares, online };
 ```
 
 **Run a mutation:**
@@ -136,9 +149,9 @@ Origin allowlist defaults to localhost; tune via `MCP_HTTP_ALLOWED_ORIGINS`. See
 
 ## Roadmap
 
-- Live verification against a real Unraid 7.2+ server (community help welcome — see [issue templates](.github/ISSUE_TEMPLATE/)).
 - Future `unraid.connect.*` namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.
 - Cloudflare Workers transport adapter (the bridge from Web `Request`/`Response` to the MCP SDK's Node `IncomingMessage`/`ServerResponse`). Tracked in `cf-worker/README.md`.
+- Track [quickjs-emscripten#258](https://github.com/justjake/quickjs-emscripten/issues/258) so we can drop the "use `Promise.all`" caveat when the asyncify host-ref fix lands upstream.
 
 ## Contributing
 

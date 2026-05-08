@@ -90,4 +90,39 @@ describe('HttpClient + GraphqlClient', () => {
     );
     await expect(client.execute({ query: '{ ok }' })).rejects.toBeInstanceOf(UnraidGraphqlError);
   });
+
+  it('surfaces GraphQL validation errors when the server responds with HTTP 400', async () => {
+    // Unraid 7.2 returns HTTP 400 (not 200) when the server can validate the
+    // document but the field/type is unknown — e.g. when the bundled SDL has
+    // drifted from the live schema. The HTTP client must turn the body's
+    // `errors[]` array into a readable detail string so the LLM can fix its
+    // selection.
+    const pool = mockAgent.get('https://tower.local');
+    pool.intercept({ path: '/graphql', method: 'POST' }).reply(
+      400,
+      {
+        errors: [
+          {
+            message: 'Cannot query field "banner" on type "InfoDisplay".',
+            extensions: { code: 'GRAPHQL_VALIDATION_FAILED' },
+          },
+        ],
+      },
+      { headers: { 'content-type': 'application/json' } },
+    );
+
+    const client = new GraphqlClient(
+      new HttpClient({ baseUrl: 'https://tower.local', apiKey: 'k' }),
+    );
+    let captured: unknown;
+    try {
+      await client.execute({ query: '{ display { banner } }' });
+    } catch (err) {
+      captured = err;
+    }
+    expect(captured).toBeInstanceOf(UnraidHttpError);
+    const msg = (captured as Error).message;
+    expect(msg).toMatch(/Cannot query field "banner" on type "InfoDisplay"/);
+    expect(msg).toMatch(/GRAPHQL_VALIDATION_FAILED/);
+  });
 });

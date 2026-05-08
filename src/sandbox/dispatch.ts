@@ -37,8 +37,11 @@ export class UnknownOperationError extends Error {
   constructor(
     public readonly namespace: string,
     public readonly operationName: string,
+    public readonly kind?: 'query' | 'mutation',
   ) {
-    super(`No operation "${operationName}" in unraid.${namespace} schema`);
+    super(
+      `No ${kind ?? 'operation'} "${operationName}" in unraid.${namespace} schema`,
+    );
   }
 }
 
@@ -85,9 +88,10 @@ export async function dispatchOperation(
   namespace: string,
   operationName: string,
   payload: DispatchOperationArgs = {},
+  kind?: 'query' | 'mutation',
 ): Promise<unknown> {
-  const op = getOperation(spec, operationName);
-  if (!op) throw new UnknownOperationError(namespace, operationName);
+  const op = getOperation(spec, operationName, kind);
+  if (!op) throw new UnknownOperationError(namespace, operationName, kind);
 
   const document = buildOperationDocument(op, payload.fields);
   const variables = buildVariables(op, payload.args ?? {});
@@ -267,7 +271,7 @@ export function buildUnraidPrelude(localSpec: ProcessedSpec | undefined): string
   for (const op of queries) {
     const jsName = uniqueIdentifier(op.jsName, usedQueryNames);
     lines.push(
-      `  ns.query.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, JSON.stringify(payload || {})); };`,
+      `  ns.query.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, "query", JSON.stringify(payload || {})); };`,
     );
   }
 
@@ -275,7 +279,7 @@ export function buildUnraidPrelude(localSpec: ProcessedSpec | undefined): string
   for (const op of mutations) {
     const jsName = uniqueIdentifier(op.jsName, usedMutationNames);
     lines.push(
-      `  ns.mutation.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, JSON.stringify(payload || {})); };`,
+      `  ns.mutation.${jsName} = function(payload) { return __unraidCallLocal(${JSON.stringify(op.name)}, "mutation", JSON.stringify(payload || {})); };`,
     );
   }
 

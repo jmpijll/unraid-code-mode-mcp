@@ -238,18 +238,32 @@ interface LocalBinding {
 }
 
 function bindLocalFunctions(context: QuickJSAsyncContext, binding: LocalBinding): void {
-  // __unraidCallLocal(operationName, payloadJson)
+  // __unraidCallLocal(operationName, kind, payloadJson)
   const callFn = context.newAsyncifiedFunction(
     '__unraidCallLocal',
-    async (opNameHandle: QuickJSHandle, payloadJsonHandle: QuickJSHandle) => {
+    async (
+      opNameHandle: QuickJSHandle,
+      kindHandle: QuickJSHandle,
+      payloadJsonHandle: QuickJSHandle,
+    ) => {
       const opName = context.getString(opNameHandle);
+      const kindRaw = context.getString(kindHandle);
+      const kind: 'query' | 'mutation' | undefined =
+        kindRaw === 'query' || kindRaw === 'mutation' ? kindRaw : undefined;
       const payloadJson = context.getString(payloadJsonHandle);
       try {
         binding.callBudgetGuard();
         const spec = binding.getSpec();
         if (!spec) throw new Error('unraid.local: spec not loaded');
         const payload = parseJson(payloadJson);
-        const data = await dispatchOperation(binding.getClient(), spec, 'local', opName, payload);
+        const data = await dispatchOperation(
+          binding.getClient(),
+          spec,
+          'local',
+          opName,
+          payload,
+          kind,
+        );
         return jsonResponseToHandle(context, data);
       } catch (err) {
         throw new Error(formatLocalError(err));

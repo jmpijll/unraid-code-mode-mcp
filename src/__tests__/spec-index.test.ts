@@ -42,6 +42,19 @@ describe('spec index', () => {
       expect(getOperation(spec, 'definitelyNotAField')).toBeUndefined();
     });
 
+    it('disambiguates query vs mutation when the same name exists for both', () => {
+      // `array` exists as both a query (read state) and a mutation (operations
+      // such as setState). Without `kind` we get the first match, but with
+      // `kind` the lookup is deterministic and returns the right one.
+      const arrayQ = getOperation(spec, 'array', 'query');
+      const arrayM = getOperation(spec, 'array', 'mutation');
+      expect(arrayQ?.kind).toBe('query');
+      expect(arrayM?.kind).toBe('mutation');
+      // Same goes for `docker`.
+      expect(getOperation(spec, 'docker', 'query')?.kind).toBe('query');
+      expect(getOperation(spec, 'docker', 'mutation')?.kind).toBe('mutation');
+    });
+
     it('finds operations by substring', () => {
       const matches = findOperationsByName(spec, 'docker');
       expect(matches.length).toBeGreaterThan(0);

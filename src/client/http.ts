@@ -196,10 +196,32 @@ function formatHttpError(status: number, path: string, body: unknown): string {
   let detail = '';
   if (body && typeof body === 'object') {
     const b = body as Record<string, unknown>;
-    const msg = b['message'] ?? b['error'];
-    const code = b['code'];
-    if (typeof msg === 'string') detail = `: ${msg}`;
-    if (typeof code === 'string') detail += ` [${code}]`;
+    // GraphQL error envelope: { errors: [{ message, extensions: { code } }] }
+    // Surface these so callers (including the LLM in the sandbox) can see
+    // validation messages instead of an opaque "HTTP 400 on /graphql".
+    if (Array.isArray(b['errors']) && b['errors'].length > 0) {
+      const errs = (b['errors'] as unknown[]).slice(0, 5).map((e) => {
+        if (e && typeof e === 'object') {
+          const eo = e as Record<string, unknown>;
+          const msg = typeof eo['message'] === 'string' ? eo['message'] : 'unknown error';
+          const ext = eo['extensions'];
+          let code: string | undefined;
+          if (ext && typeof ext === 'object') {
+            const c = (ext as Record<string, unknown>)['code'];
+            if (typeof c === 'string') code = c;
+          }
+          return code ? `${msg} [${code}]` : msg;
+        }
+        return String(e);
+      });
+      const more = (b['errors'] as unknown[]).length > 5 ? ` (+${String((b['errors'] as unknown[]).length - 5)} more)` : '';
+      detail = `: GraphQL ${errs.join(' | ')}${more}`;
+    } else {
+      const msg = b['message'] ?? b['error'];
+      const code = b['code'];
+      if (typeof msg === 'string') detail = `: ${msg}`;
+      if (typeof code === 'string') detail += ` [${code}]`;
+    }
   } else if (typeof body === 'string' && body.length < 500) {
     detail = `: ${body}`;
   }
