@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "unraid": {
+      "type": "local",
+      "command": ["node", "dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "UNRAID_BASE_URL": "{env:UNRAID_BASE_URL}",
+        "UNRAID_API_KEY": "{env:UNRAID_API_KEY}",
+        "UNRAID_INSECURE": "{env:UNRAID_INSECURE}",
+        "UNRAID_CA_CERT_PATH": "{env:UNRAID_CA_CERT_PATH}"
+      }
+    }
+  },
+  "permission": {
+    "unraid_*": "allow"
+  }
+}

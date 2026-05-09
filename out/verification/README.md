@@ -25,6 +25,8 @@ and probe metadata.
 | `local-read-sweep-live-smoke.txt` | Read-only sweep through `unraid.local.query.*`: `info`, `array`, `shares`, `vms`, `docker`, `online` |
 | `vm-cycle-mutation-live-smoke.txt` | VM `SHUTOFF → RUNNING → SHUTOFF` round-trip via `unraid.local.mutation.vmStart` / `vmStop`, with state polled between transitions |
 | `sandbox-multi-await-stress.txt` | Standalone `npm run test:sandbox` regression for the sync + Promise-callback host bridge — 25 sequential awaits, 10-way `Promise.all`, mixed patterns, error propagation. Hardware-free. |
+| `cursor-agent-sonnet-mcp-call.txt` | End-to-end LLM-mediated invocation through `cursor-agent` v2026.05.05 + Claude Sonnet 4.6 (`claude-4.6-sonnet-medium`). Three prompts: schema smoke, full live overview rendered to a Markdown table, and an error-path prompt where the agent surfaces a sandbox `TypeError` and stops without inventing a workaround. |
+| `opencode-deepseek-mcp-call.txt` | End-to-end LLM-mediated invocation through `opencode` v1.14.30 + DeepSeek v4 Flash (`opencode-go/deepseek-v4-flash`). Schema smoke green; live overview's `Promise.all` execute call hit a mid-test upstream `Invalid CSRF token / 401` flip on the box — useful evidence of how the model handles unexpected upstream auth changes (correctly: explains, suggests re-auth, does not flail). Includes the gotchas hit during this verification (opencode `--pure run` stdin handling, persisted `variant: "max"`, DB lock conflicts with a long-running TUI). |
 
 ## What sanitization means here
 

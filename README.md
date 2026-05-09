@@ -35,10 +35,23 @@ Built as the GraphQL-flavoured sibling of [unifi-code-mode-mcp](https://github.c
 > (currently `v4.33.0`, no `main`-drift) and the introspection-disabled
 > fallback is exercised by unit tests.
 >
+> **End-to-end LLM-mediated invocation is verified through two clients
+> against the same Unraid 7.2 box:**
+>
+> | Client | Model | Status | Transcript |
+> |---|---|---|---|
+> | `cursor-agent` v2026.05.05 | Claude Sonnet 4.6 (`claude-4.6-sonnet-medium`) | **VERIFIED** — 3 prompts including a full live `info`/`array`/`shares`/`vms`/`docker`/`online` overview rendered to a Markdown table; error-path prompt handled correctly without invented recovery | [`out/verification/cursor-agent-sonnet-mcp-call.txt`](out/verification/cursor-agent-sonnet-mcp-call.txt) |
+> | `opencode` v1.14.30 | DeepSeek v4 Flash via `opencode-go/deepseek-v4-flash` | **VERIFIED on schema-only path; live execute hit a mid-test upstream CSRF flip** — schema smoke (102 ops) green; the live overview produced valid `Promise.all` typed-query code on the first try and the model handled the upstream `Invalid CSRF token / 401` gracefully (explained, suggested re-auth, did not flail) | [`out/verification/opencode-deepseek-mcp-call.txt`](out/verification/opencode-deepseek-mcp-call.txt) |
+>
+> See [`examples/unraid-expert-agent/`](examples/unraid-expert-agent/) for
+> the persona ([`AGENTS.md`](examples/unraid-expert-agent/AGENTS.md)),
+> a vetted set of [sample prompts](examples/unraid-expert-agent/SAMPLE_PROMPTS.md),
+> and [cross-platform install snippets](examples/unraid-expert-agent/install.md).
+>
 > **NOT verified by us** (and where help is welcome): every
-> agent / IDE client beyond the raw stdio harness — Cursor (chat panel),
-> Claude Code, Claude Desktop, VS Code + Copilot, Codex CLI, Continue,
-> Cline, opencode, Aider, Zed, MCP Inspector (CLI + UI); the Streamable
+> agent / IDE client beyond cursor-agent CLI and opencode — Cursor IDE
+> chat panel, Claude Code, Claude Desktop, VS Code + Copilot, Codex CLI,
+> Continue, Cline, Aider, Zed, MCP Inspector (CLI + UI); the Streamable
 > HTTP transport in multi-tenant mode; the Cloudflare Workers entry
 > (scaffolded but not deployed); any non-VM mutation
 > (Docker container start/stop, share/disk operations, parity ops);

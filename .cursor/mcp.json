@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "unraid": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {
+        "MCP_TRANSPORT": "stdio",
+        "UNRAID_BASE_URL": "${env:UNRAID_BASE_URL}",
+        "UNRAID_API_KEY": "${env:UNRAID_API_KEY}",
+        "UNRAID_INSECURE": "${env:UNRAID_INSECURE}",
+        "UNRAID_CA_CERT_PATH": "${env:UNRAID_CA_CERT_PATH}"
+      }
+    }
+  }
+}

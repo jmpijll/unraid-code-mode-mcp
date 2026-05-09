@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **End-to-end LLM-mediated MCP verification** through two clients against a real Unraid 7.2 box:
+  - `cursor-agent` v2026.05.05 + Claude Sonnet 4.6 — VERIFIED with 3 prompts (schema smoke, full live `info`/`array`/`shares`/`vms`/`docker`/`online` overview rendered to a Markdown table, and an error-path prompt where the agent surfaces a sandbox `TypeError` and stops without inventing a workaround). Transcript: [`out/verification/cursor-agent-sonnet-mcp-call.txt`](out/verification/cursor-agent-sonnet-mcp-call.txt).
+  - `opencode` v1.14.30 + DeepSeek v4 Flash via `opencode-go/deepseek-v4-flash` — VERIFIED on the schema-only smoke (102 ops); the live overview's `Promise.all` execute call hit a mid-test upstream `Invalid CSRF token / 401` flip on the box. The model handled the upstream auth failure correctly (explained, suggested re-auth, did not flail) — useful evidence of behaviour under unexpected upstream changes. Transcript: [`out/verification/opencode-deepseek-mcp-call.txt`](out/verification/opencode-deepseek-mcp-call.txt).
+- **`examples/unraid-expert-agent/`** — drop-in persona for any agent platform connected to this MCP server. Includes [`AGENTS.md`](examples/unraid-expert-agent/AGENTS.md) (the persona itself), [`SAMPLE_PROMPTS.md`](examples/unraid-expert-agent/SAMPLE_PROMPTS.md) (10 vetted prompts annotated with expected behaviour), [`install.md`](examples/unraid-expert-agent/install.md) (cross-platform install snippets for Cursor, opencode, Claude Code, Claude Desktop, VS Code + Copilot, MCP Inspector — with a per-platform VERIFIED / NOT-VERIFIED legend), and [`README.md`](examples/unraid-expert-agent/README.md) (intro + verification status).
+- **Repo-rooted `.cursor/mcp.json`, `.cursor/cli.json`, and `opencode.json`** — env-var-interpolated, committed to the repo as both documentation and a one-step starting point for users + the maintainer's own verification runs.
+
+### Notes for testers
+
+- opencode v1.14.30 in `--pure run` mode hangs on stdin if you don't redirect from `/dev/null`. Append `< /dev/null` to every headless invocation.
+- opencode persists per-model variant choices in `~/.local/state/opencode/model.json`. If a previous TUI session set `variant.opencode-go/deepseek-v4-flash` to `"max"`, every subsequent `--pure run` inherits it and runs with the max-reasoning budget. Reset by editing the JSON to set `"variant": {}` (or by toggling the variant back to default in the TUI).
+- cursor-agent leaves new MCP servers as `not loaded (needs approval)` until you run `cursor-agent mcp enable unraid` once. The project-scoped `.cursor/cli.json` here pre-allows the `Mcp(unraid:search)` and `Mcp(unraid:execute)` tool grants so the per-call approval prompt also doesn't fire.
+
 ## [0.1.0-beta.1] — 2026-05-08
 
 First public beta. Install from source. Not on npm yet.

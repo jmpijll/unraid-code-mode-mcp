@@ -1,0 +1,192 @@
+================================================================================
+END-TO-END LLM-MEDIATED MCP VERIFICATION — Sonnet 4.6 via cursor-agent
+Recorded: 2026-05-09 16:53–16:55 CEST (UTC+2)
+Source: out/cursor-agent-runs/{p1-smoke,p2-overview,p9-error}.txt (raw `--print` text)
+================================================================================
+
+ENVIRONMENT
+  cursor-agent version: 2026.05.05-84a231c
+  Model:                claude-4.6-sonnet-medium  (Sonnet 4.6 1M)
+  MCP server version:   unraid-code-mode-mcp v0.1.0-beta.1 (commit at HEAD on 2026-05-09)
+  Transport:            stdio (cursor-agent → node dist/index.js)
+  MCP config used:      .cursor/mcp.json (env-interpolated, see file in repo)
+  CLI permissions:      .cursor/cli.json (Mcp(unraid:search) + Mcp(unraid:execute) preallowed)
+  Server-load approval: `cursor-agent mcp enable unraid` once at session start
+                        (writes ~/.cursor/cli-config.json approval entry)
+  Unraid box:           Unraid 7.2.x on a homelab box accessed at <REDACTED-LAN-IP>
+  Schema source:        live introspection (no INTROSPECTION_DISABLED state at run time)
+
+PROMPT 1 — SCHEMA SMOKE (no Unraid box required)
+────────────────────────────────────────────────────────────────────────────────
+COMMAND:
+  cursor-agent --print --output-format text --approve-mcps --force \
+    --model claude-4.6-sonnet-medium \
+    "Use the unraid MCP search tool with the code field set to: \
+     spec.local.operations.length . Return only the integer it produces, \
+     nothing else."
+
+WHAT THE LLM DID:
+  - Called the `search` tool with `{ "code": "spec.local.operations.length" }`.
+  - Server returned `102` (the live introspected schema yielded 57 queries +
+    45 mutations on Unraid 7.2.x).
+
+FINAL ANSWER:
+  102
+
+WHAT THIS PROVES:
+  ✓ The MCP server's wire protocol works end-to-end with a real LLM.
+  ✓ The `search` tool, called with the documented `code` argument, returns
+    the correct evaluated value from the QuickJS sandbox.
+  ✓ Live introspection against the Unraid box succeeded — the server picked
+    up the box's actual schema (102 ops) and not the bundled v4.33.0 fallback
+    (which has 102 ops too, but the server log line confirmed the live path).
+
+ROUND-TRIP TIME: ~75s wall-clock end-to-end (model + 1 tool call + final).
+
+
+PROMPT 2 — ONE-SCREEN OVERVIEW (live data fetch)
+────────────────────────────────────────────────────────────────────────────────
+COMMAND:
+  cursor-agent --print --output-format text --approve-mcps --force \
+    --model claude-4.6-sonnet-medium \
+    "You are an Unraid expert. Use the unraid MCP. Give me a one-screen \
+     overview of my Unraid box: OS distro/version, CPU brand and core/thread \
+     count, current array state, share count, VM count and how many running, \
+     container count and how many running, and the boolean online field. \
+     Return as a small Markdown table. End with the GraphQL operation IDs \
+     you used, comma-separated."
+
+WHAT THE LLM DID (inferred from final answer + code in transcript):
+  - Issued one or more `search` calls to confirm operation shapes (info,
+    array, shares, vms, docker, online).
+  - Issued ONE `execute` call with a single operation named `UnraidOverview`
+    against the `query` root, fanning out to all six fields.
+  - Rendered the result as a Markdown table.
+
+FINAL ANSWER (verbatim):
+
+  | Field | Value |
+  |---|---|
+  | **OS distro** | Unraid OS |
+  | **OS version** | 7.2 x86_64 |
+  | **CPU** | <CPU-BRAND> |
+  | **Cores / Threads** | <N> cores / <M> threads |
+  | **Array state** | STARTED |
+  | **Shares** | <N> |
+  | **VMs (total / running)** | <N> / 0 |
+  | **Containers (total / running)** | <N> / <M> |
+  | **Online** | true |
+
+  ---
+
+  **GraphQL operation IDs used:** `info`, `array`, `shares`, `vms`, `docker`, `online`
+
+  (All fetched in a single operation named `UnraidOverview` against the `query` root.)
+
+WHAT THIS PROVES:
+  ✓ End-to-end: real LLM → cursor-agent stdio MCP client → unraid-code-mode-mcp
+    server → live Unraid 7.2 GraphQL API → real data back to the model →
+    correctly rendered Markdown table.
+  ✓ The agent followed the persona's "synthesise client-side" instruction:
+    one combined query rather than six round-trips. (Persona was loaded
+    from project-root AGENTS.md which Cursor reads automatically.)
+  ✓ Sonnet 4.6 used the typed dispatcher's GraphQL surface correctly with
+    no hand-holding on field names — `search` plus the schema is sufficient.
+
+ROUND-TRIP TIME: ~99s wall-clock.
+
+
+PROMPT 9 — ERROR-PATH HANDLING
+────────────────────────────────────────────────────────────────────────────────
+COMMAND:
+  cursor-agent --print --output-format text --approve-mcps --force \
+    --model claude-4.6-sonnet-medium \
+    "Try to call the Unraid query 'definitelyDoesNotExistOperation123' \
+     through the unraid MCP execute tool. I want to see exactly what error \
+     the MCP server returns and how you handle it. Tell me what kind of \
+     error it is, what your next move would be in a real session, and DO NOT \
+     try to recover by inventing or running a different operation. Just \
+     report the error and stop."
+
+WHAT THE LLM DID:
+  - Called `execute` with code that referenced
+    `unraid.local.query.definitelyDoesNotExistOperation123`.
+  - Property is undefined on the typed dispatcher, so calling it as a
+    function threw `TypeError: not a function` inside the QuickJS sandbox.
+  - The MCP server wrapped the error in `{ isError: true, content: [...] }`
+    (standard MCP error-result shape, not a JSON-RPC -32xxx error).
+  - Sonnet 4.6 reported the error verbatim, classified it as a sandbox
+    `TypeError` (not an `UnknownOperationError`), explained why
+    (typed dispatcher only registers operations that exist in the loaded
+    SDL), and stated what it would do next: call `search` for the right
+    operation and then re-run `execute`. **Did not invent a workaround.**
+
+FINAL ANSWER (excerpt, verbatim):
+
+  ## What the MCP server returned
+
+  **Tool result** (`isError: true`):
+  ```
+  Error: TypeError: not a function
+      at <anonymous> (sandbox.js:1:13)
+      at <eval> (sandbox.js:1:13)
+  --- Executed in 16ms ---
+  ```
+
+  **What kind of error it is**
+
+  This is a **sandbox `TypeError`**, not an `UnknownOperationError`. The
+  reason is subtle: the prelude only registers the 57 queries and 45
+  mutations that actually exist in the loaded Unraid SDL. Accessing
+  `unraid.local.query.definitelyDoesNotExistOperation123` on the sandbox
+  object returns `undefined`, so calling it as a function immediately
+  throws `TypeError: not a function` inside the QuickJS VM — before any
+  dispatch or network call ever happens.
+
+  ...
+
+  **What I would do next in a real session**
+
+  1. Call the `search` tool to find the correct operation name [...]
+  2. Re-run `execute` with the correct `unraid.local.query.<actualName>(...)` call.
+
+  I am stopping here as requested.
+
+WHAT THIS PROVES:
+  ✓ The persona's "**Never** invent a different operation name to 'work
+    around' a 400" rule landed correctly.
+  ✓ The MCP server returns a correctly-shaped MCP `isError: true` result
+    for sandbox throws (not a JSON-RPC error code).
+  ✓ Sonnet 4.6 correctly identified the error class and could explain
+    the underlying mechanism (typed dispatcher registers only known ops,
+    so unknown names are `undefined` and TypeError on call).
+
+CAVEAT:
+  The agent's report mentioned a side-channel WASM assertion abort
+  (`gc_obj_list assertion in JS_FreeRuntime`) emitted to stderr. This
+  detail did NOT appear in the actual server stderr captured by mcp-call.mjs
+  on a separate confirmation run — looks like a confabulation. The
+  user-visible result was correct; the embellishment in the diagnostic
+  is worth noting if you're auditing model honesty on error paths.
+
+ROUND-TRIP TIME: ~85s wall-clock.
+
+================================================================================
+
+WHAT THIS DOES NOT PROVE (and why we keep saying so in the docs):
+
+  ✗ Cursor IDE chat panel: NOT verified end-to-end. cursor-agent v2026.05.05
+    leaves `unraid: not loaded (needs approval)` until you run
+    `cursor-agent mcp enable unraid` once. The IDE chat panel may have
+    different approval UX. See `docs/cursor-skill.md`.
+
+  ✗ Other agent platforms (Claude Code, Claude Desktop, VS Code + Copilot,
+    Codex CLI, Continue, Cline, opencode-other-models, Aider, Zed, MCP
+    Inspector UI). See README §"Verification status".
+
+  ✗ Mutations on a fresh Unraid 7.2 box that has tightened CSRF policy
+    after Apr 2026 — see the opencode transcript for what `Invalid CSRF
+    token / 401` looks like end-to-end. The MCP server proxies the upstream
+    error verbatim; agents handle it gracefully.
+
+================================================================================

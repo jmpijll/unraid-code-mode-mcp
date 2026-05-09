@@ -1,0 +1,216 @@
+================================================================================
+END-TO-END LLM-MEDIATED MCP VERIFICATION — DeepSeek v4 Flash via opencode
+Recorded: 2026-05-09 17:25–17:43 CEST (UTC+2)
+Source: out/opencode-runs/{p1-smoke,p2-overview}.txt (raw `--print` text)
+================================================================================
+
+ENVIRONMENT
+  opencode version:     1.14.30
+  Provider:             opencode-go (api credentials)
+  Model:                opencode-go/deepseek-v4-flash
+  MCP server version:   unraid-code-mode-mcp v0.1.0-beta.1 (commit at HEAD on 2026-05-09)
+  Transport:            stdio (opencode → node dist/index.js)
+  MCP config used:      ./opencode.json (env-interpolated, see file in repo)
+  Permission grant:     `unraid_*: allow` (covers both unraid_search and unraid_execute)
+  Persona:              project-root AGENTS.md (loaded by opencode automatically)
+  Unraid box:           Unraid 7.2.x on a homelab box accessed at <REDACTED-LAN-IP>
+  Schema source:        live introspection at session start; box flipped CSRF
+                        policy mid-session — see Prompt 2 caveat below
+
+OPENCODE.JSON (project-scoped, sanitized):
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "unraid": {
+      "type": "local",
+      "command": ["node", "dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "UNRAID_BASE_URL": "{env:UNRAID_BASE_URL}",
+        "UNRAID_API_KEY": "{env:UNRAID_API_KEY}",
+        "UNRAID_INSECURE": "{env:UNRAID_INSECURE}"
+      }
+    }
+  },
+  "permission": { "unraid_*": "allow" }
+}
+
+OPENCODE STARTUP SMOKE (no LLM, just protocol):
+  $ opencode mcp list
+  ┌  MCP Servers
+  │
+  ●  ✓ unraid connected
+  │      node dist/index.js
+  │
+  └  1 server(s)
+                                                                                
+  ✓ opencode auto-loads MCP servers and prefixes tool names with the server
+    key — `search` becomes `unraid_search`, `execute` becomes `unraid_execute`.
+  ✓ No additional permission gymnastics needed beyond `unraid_*: allow`.
+
+GOTCHAS HIT IN THIS VERIFICATION SESSION:
+  1. opencode v1.14.30 in `--pure run` mode hangs on stdin if you don't
+     redirect from /dev/null. The bare command:
+         opencode --pure run --model opencode-go/deepseek-v4-flash "..."
+     never produced output until I added `</dev/null`. With stdin closed,
+     the same invocation works.
+
+  2. opencode persists per-model variant choices in
+         ~/.local/state/opencode/model.json
+     If a previous TUI session set `variant.opencode-go/deepseek-v4-flash`
+     to "max", every subsequent `--pure run` inherits it and runs with the
+     max-reasoning budget — which can take many minutes per response.
+     Reset with: `python3 -c "..."` to write `"variant": {}` to the JSON.
+
+  3. opencode DB lock conflicts with a long-running TUI: I had to kill the
+     persistent `opencode --pure` daemon (PID had been alive from the prior
+     day) before headless `--pure run` would proceed reliably.
+
+────────────────────────────────────────────────────────────────────────────────
+
+
+PROMPT 1 — SCHEMA SMOKE (no Unraid box required)
+────────────────────────────────────────────────────────────────────────────────
+COMMAND:
+  opencode --pure run --model opencode-go/deepseek-v4-flash \
+    "Use the unraid_search tool with code='spec.local.operations.length'. \
+     Reply with only the number." \
+    < /dev/null
+
+WHAT THE MODEL DID (verbatim from the captured opencode TUI output):
+
+  > build · deepseek-v4-flash
+  ⚙ unraid_search {"code":"spec.local.operations.length"}
+  ⚙ unraid_search {"code":"index.operations.length"}
+  102
+
+  - Step 1: called `unraid_search` with the prompt's exact code argument.
+            Server returned 102.
+  - Step 2: model double-checked using `index.operations.length` instead
+            (`spec.local.operations` and `index.operations` are the same
+            array, just two different exposed handles). Server returned 102
+            again.
+  - Step 3: final answer "102".
+
+WHAT THIS PROVES:
+  ✓ Project-scoped opencode.json (mcp.unraid → node dist/index.js) is
+    correctly loaded by opencode.
+  ✓ opencode auto-injects MCP tools into the model's tool list using the
+    naming scheme <server>_<tool> — the model received `unraid_search` and
+    `unraid_execute` as native callable tools, no spawn-yourself hacks.
+  ✓ A real LLM (DeepSeek v4 Flash) called `unraid_search` with the correct
+    arguments and the server returned the correct value (102).
+  ✓ The model self-verifies by issuing a second equivalent call before
+    committing to the answer — interesting behaviour, distinct from
+    Sonnet 4.6 which just trusts the first call.
+
+ROUND-TRIP TIME: ~72s wall-clock end-to-end.
+
+
+PROMPT 2 — ONE-SCREEN OVERVIEW (live data fetch)
+────────────────────────────────────────────────────────────────────────────────
+COMMAND:
+  opencode --pure run --model opencode-go/deepseek-v4-flash \
+    "You are an Unraid expert. Use the unraid MCP. Give me a one-screen \
+     overview of my Unraid box: OS distro/version, CPU brand and \
+     core/thread count, current array state, share count, VM count and \
+     how many running, container count and how many running, and the \
+     boolean online field. Return as a small Markdown table. End with the \
+     GraphQL operation IDs you used, comma-separated." \
+    < /dev/null
+
+WHAT THE MODEL DID (high-level):
+
+  - 28 separate `unraid_search` calls across the schema, exploring `info`,
+    `array`, `shares`, `vms`, `vm`, `docker`, and trying multiple
+    introspection approaches (`searchOperations`, `getOperation`,
+    `findOperationsByName`, `getType`, raw `index.operations.filter`).
+    DeepSeek v4 Flash is significantly more exploratory than Sonnet 4.6
+    here — Sonnet typically gets the operation right in 0–1 search calls
+    on the same prompt.
+  - 1 `unraid_execute` call that produced excellent code:
+        const [sys, arr, shareList, vmData, dockerData, isOnline] =
+          await Promise.all([
+            unraid.local.query.info({ fields: '...' }),
+            unraid.local.query.array({ fields: ['state'] }),
+            unraid.local.query.shares({ fields: ['name'] }),
+            unraid.local.query.vms({ fields: 'domains { name state }' }),
+            unraid.local.query.docker({ fields: 'containers { names state }' }),
+            unraid.local.query.online(),
+          ]);
+        ... aggregation ...
+        return { ... };
+
+  - The execute call HIT AN UPSTREAM ERROR mid-test:
+        { errors: [{ message: "Invalid CSRF token", path: ["info"],
+                     extensions: { code: "UNAUTHENTICATED",
+                                   originalError: { statusCode: 401 } } }] }
+    A direct `curl` to the same Unraid box from the verification host
+    returned the same error, confirming the box's policy had changed in
+    the ~50 minutes since the cursor-agent run captured live data
+    successfully. The MCP server proxies the upstream error verbatim.
+
+  - Several follow-up retries (sequential awaits, simpler queries, even a
+    `.then()` callback variant — all variations hit the same upstream
+    `Invalid CSRF token` 401).
+
+  - Final response from the model (verbatim):
+
+        Couldn't execute the queries — the server returned `Invalid CSRF
+        token`, meaning the session cookie has expired. You'll need to
+        re-authenticate with your Unraid box first (e.g., log back into
+        the web UI or refresh the MCP server's credentials).
+
+        You can verify connectivity with:
+
+        ```javascript
+        unraid.local.query.online()
+        ```
+
+        Try that after refreshing your session and let me know if you'd
+        like me to retry.
+
+WHAT THIS PROVES:
+  ✓ End-to-end: real LLM → opencode stdio MCP client → unraid-code-mode-mcp
+    server → live Unraid 7.2 GraphQL API → real upstream error back to the
+    model → correctly handled and explained.
+  ✓ The MCP server returns upstream Unraid GraphQL errors verbatim with no
+    rewriting, including the `extensions.code: UNAUTHENTICATED` and
+    `originalError.statusCode: 401`.
+  ✓ DeepSeek v4 Flash, with the persona loaded, **handled the error
+    correctly**: identified the error class, explained likely cause
+    (session/auth), suggested remediation (re-auth or refresh credentials),
+    and offered to retry. **Did not flail or invent fake data.**
+  ✓ The model's first execute attempt was valid `Promise.all` code with the
+    correct typed-dispatcher field shapes — no hand-holding on the
+    GraphQL surface needed.
+
+WHAT THIS DOES NOT PROVE:
+  ✗ A clean live-data overview through opencode + DeepSeek v4 Flash.
+    The cursor-agent transcript above shows the same prompt working when
+    the box is in CSRF-allowing state. Re-running this prompt after the
+    Unraid box's CSRF policy is back to "allow API key without token"
+    would close the verification.
+
+OPEN QUESTION (for the maintainer to investigate):
+  - Why did the box flip CSRF policy mid-session? Possibilities:
+    1. The user toggled "CSRF protection" in Settings → Management Access.
+    2. A scheduled `unraid-api restart` rotated the in-memory session
+       state and now requires a fresh handshake.
+    3. The 7.2.x patch version on the box auto-updated and shipped
+       different defaults.
+  - Action item: capture the full request/response pair (with curl -i)
+    when the box transitions; consider adding a CSRF-aware client path
+    to the MCP server's HTTP layer so the agent's first call seeds a
+    token cookie automatically.
+
+ROUND-TRIP TIME: ~190s wall-clock.
+
+================================================================================
+
+TOKENS / COST: Not captured for this run — opencode --pure run does not
+print per-step token counts in its TUI output. Order of magnitude based on
+the unifi-code-mode-mcp transcript with the same model is "low single-digit
+cents" for prompts of this size.
+
+================================================================================
