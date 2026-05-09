@@ -3,7 +3,7 @@
 [![CI](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](#project-status)
-[![Version: v0.1.0-beta.1](https://img.shields.io/badge/version-v0.1.0--beta.1-blue.svg)](CHANGELOG.md)
+[![Version: v0.1.0-beta.2](https://img.shields.io/badge/version-v0.1.0--beta.2-blue.svg)](CHANGELOG.md)
 
 A code-mode MCP server for the **[Unraid](https://unraid.net) 7.2+ GraphQL API**. Exposes two MCP tools — `search` and `execute` — that let an LLM agent introspect and call any Unraid GraphQL field by writing JavaScript that runs inside a sandboxed QuickJS WASM context.
 
@@ -238,13 +238,21 @@ What is **not yet verified** (and where help is welcome):
 
 ## Roadmap
 
-- **End-to-end LLM-mediated invocation verification** through at least Cursor, Claude Code, opencode, and the MCP Inspector. This is the gating item for `1.0.0`.
+**Done in `v0.1.0-beta.2`:**
+
+- ✅ **Expose the sandbox wall-clock deadline as `UNRAID_EXECUTE_TIMEOUT_MS`** (1 s – 10 min, default 30 s). Useful for slow-booting VMs and for very large `Promise.all` batches against a controller under load.
+- ✅ **CSRF-aware error decoration** — when an Unraid box returns `extensions.code: UNAUTHENTICATED` + `Invalid CSRF token`, the MCP server adds a remediation hint pointing at API key re-mint, the curl sanity check, and the box-side log path. See [`docs/security.md`](docs/security.md#unraid-72-csrf-behaviour).
+- ✅ **MCP `serverInfo.version` reads from `package.json` at runtime** — no more hand-stamped version drift between releases.
+- ✅ **End-to-end LLM-mediated invocation verification** through `cursor-agent` (Claude Sonnet 4.6) and `opencode` (DeepSeek v4 Flash). See the verification matrix above.
+
+**Still open (rough order, highest-leverage first):**
+
+- **More LLM clients verified** — Claude Code CLI, Claude Desktop, MCP Inspector (CLI smoke runs in CI but UI is unverified), VS Code + Copilot. Roadmap item, gating for `1.0.0`.
+- **Auto-bump the bundled SDL pin** via Dependabot-style PRs as new `unraid/api` releases ship. Foundational dependency hygiene.
 - **Streamable HTTP multi-tenant deployment** verified against a real reverse proxy with rotating per-tenant credentials.
 - **Mutation verification matrix** beyond VM start/stop — Docker container lifecycle, parity checks, share/disk ops — once we have testers with redundant hardware.
 - **`unraid.connect.*`** namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.
 - **Cloudflare Workers transport adapter** (the bridge from Web `Request`/`Response` to the MCP SDK's Node `IncomingMessage`/`ServerResponse`). Tracked in [`cf-worker/README.md`](cf-worker/README.md).
-- **Auto-bump the bundled SDL pin** via Dependabot-style PRs as new `unraid/api` releases ship.
-- **Expose the sandbox wall-clock deadline as an env var** (e.g. `UNRAID_EXECUTE_TIMEOUT_MS`). Currently hardcoded to `DEFAULT_TIMEOUT_MS = 30_000` in `src/sandbox/limits.ts`. Useful for slow-booting VMs and for very large `Promise.all` batches against a controller under load.
 - **NPM publish** — reserved for `1.0.0`. The package is `"private": true` until then.
 
 ## Contributing

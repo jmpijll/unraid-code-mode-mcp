@@ -16,6 +16,9 @@
  * controllers can be wired up later via the same loader.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig, type AppConfig } from './config.js';
 import { getQuickJSModule } from './sandbox/executor.js';
 import { loadFallbackSpec, loadUnraidSpec } from './spec/loader.js';
@@ -29,6 +32,30 @@ import { createMcpServer } from './server/server.js';
 import { startHttpTransport, startStdioTransport } from './server/transport.js';
 import { currentRequestScope } from './server/request-context.js';
 import type { ProcessedSpec } from './types/spec.js';
+
+function readPackageVersion(): string {
+  // dist/index.js → ../package.json. In dev (tsx src/index.ts) it's the
+  // same relative offset because src/ and dist/ are siblings of package.json.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(here, '..', 'package.json'),
+    resolve(here, '..', '..', 'package.json'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = readFileSync(candidate, 'utf8');
+      const parsed = JSON.parse(raw) as { version?: unknown };
+      if (typeof parsed.version === 'string' && parsed.version.length > 0) {
+        return parsed.version;
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+  return '0.0.0-unknown';
+}
+
+const SERVER_VERSION = readPackageVersion();
 
 const logger = {
   info: (msg: string, ...args: unknown[]): void => {
@@ -115,10 +142,13 @@ async function main(): Promise<void> {
   const server = createMcpServer({
     ...(localSpec ? { localSpec } : {}),
     tenantResolver,
-    limits: { maxCallsPerExecute: config.unraidMaxCallsPerExecute },
+    limits: {
+      maxCallsPerExecute: config.unraidMaxCallsPerExecute,
+      timeoutMs: config.unraidExecuteTimeoutMs,
+    },
     logger,
     name: 'unraid-code-mode-mcp',
-    version: '0.1.0',
+    version: SERVER_VERSION,
   });
 
   if (config.mcpTransport === 'stdio') {

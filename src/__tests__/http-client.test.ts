@@ -125,4 +125,54 @@ describe('HttpClient + GraphqlClient', () => {
     expect(msg).toMatch(/Cannot query field "banner" on type "InfoDisplay"/);
     expect(msg).toMatch(/GRAPHQL_VALIDATION_FAILED/);
   });
+
+  it('decorates an "Invalid CSRF token" GraphQL error with a remediation hint', async () => {
+    // Some Unraid 7.2.x boxes (mis)configure the API server to require a CSRF
+    // token on every /graphql POST, even for `x-api-key`-authenticated
+    // requests. The upstream response is a 200 with a structured GraphQL
+    // error body (the box's CSRF middleware runs after the GraphQL transport
+    // layer parses the request, so it gets folded into errors[] rather than
+    // the HTTP status). Without decoration the agent only sees
+    // "GraphQL error: Invalid CSRF token" — which is enough for it to flail.
+    // The hint we add here points operators at the API key and the unraid-api
+    // logs so they can fix it server-side.
+    const pool = mockAgent.get('https://tower.local');
+    pool.intercept({ path: '/graphql', method: 'POST' }).reply(
+      200,
+      {
+        data: null,
+        errors: [
+          {
+            message: 'Invalid CSRF token',
+            path: ['online'],
+            extensions: {
+              code: 'UNAUTHENTICATED',
+              originalError: {
+                message: 'Invalid CSRF token',
+                error: 'Unauthorized',
+                statusCode: 401,
+              },
+            },
+          },
+        ],
+      },
+      { headers: { 'content-type': 'application/json' } },
+    );
+
+    const client = new GraphqlClient(
+      new HttpClient({ baseUrl: 'https://tower.local', apiKey: 'k' }),
+    );
+    let captured: unknown;
+    try {
+      await client.execute({ query: '{ online }' });
+    } catch (err) {
+      captured = err;
+    }
+    expect(captured).toBeInstanceOf(UnraidGraphqlError);
+    const msg = (captured as Error).message;
+    expect(msg).toMatch(/Invalid CSRF token/);
+    expect(msg).toMatch(/Hint:/);
+    expect(msg).toMatch(/Settings → Management Access → API Keys/);
+    expect(msg).toMatch(/curl/);
+  });
 });

@@ -106,7 +106,10 @@ export default {
       spec,
       executor,
       name: `unraid-code-mode-mcp-${namespace}`,
-      version: '0.1.0',
+      // cf-worker scaffold: version is hand-stamped here because Workers can't
+      // read package.json at runtime. Bump alongside the Node entry on each
+      // release until the cf-worker becomes a first-class deployment target.
+      version: '0.1.0-beta.2',
       request: async (opts: RequestOptions): Promise<unknown> => doRequest(opts, creds),
     });
 

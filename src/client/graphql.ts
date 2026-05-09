@@ -42,7 +42,8 @@ export class GraphqlClient {
     /* eslint-disable @typescript-eslint/no-unnecessary-condition */
     if (payload?.errors && payload.errors.length > 0) {
       const summary = payload.errors.map((e) => e.message || 'unknown GraphQL error').join('; ');
-      throw new UnraidGraphqlError(`GraphQL error: ${summary}`, payload.errors, payload.data);
+      const decorated = decorateUnraidError(summary, payload.errors);
+      throw new UnraidGraphqlError(decorated, payload.errors, payload.data);
     }
     if (!payload || payload.data === undefined) {
       throw new UnraidGraphqlError('GraphQL response had no data and no errors', [
@@ -57,6 +58,44 @@ export class GraphqlClient {
   get rawHttp(): HttpClient {
     return this.http;
   }
+}
+
+/**
+ * Decorate well-known upstream Unraid error shapes with a remediation hint.
+ *
+ * Currently handles:
+ *   - **CSRF rejection.** Some Unraid 7.2.x boxes are configured (or
+ *     misconfigured) to require a CSRF token on every `/graphql` POST,
+ *     including requests authenticated with `x-api-key`. The upstream
+ *     response is `{ extensions.code: "UNAUTHENTICATED",
+ *     originalError.message: "Invalid CSRF token", statusCode: 401 }`.
+ *     The MCP server's HTTP path does not negotiate a CSRF token (the
+ *     `x-api-key` contract documents API key auth as sufficient), so the
+ *     remediation is a server-side toggle: re-create the API key with
+ *     CSRF disabled, or check the box's API server config. We surface a
+ *     human-readable hint so the agent doesn't flail.
+ */
+function decorateUnraidError(summary: string, errors: GraphqlResponse['errors']): string {
+  const looksLikeCsrf =
+    /csrf/i.test(summary) ||
+    errors?.some((e) => {
+      const ext = e.extensions as
+        | { code?: unknown; originalError?: { message?: unknown } }
+        | undefined;
+      const orig = typeof ext?.originalError?.message === 'string' ? ext.originalError.message : '';
+      return /csrf/i.test(orig) || ext?.code === 'UNAUTHENTICATED';
+    });
+  if (looksLikeCsrf) {
+    return (
+      `${summary}. ` +
+      'Hint: this Unraid box rejected an `x-api-key`-authenticated request with a CSRF / UNAUTHENTICATED ' +
+      'error. Most Unraid 7.2 boxes accept the API key without a CSRF token; if yours does not, ' +
+      're-create the API key (Settings → Management Access → API Keys), confirm `x-api-key` works ' +
+      'with `curl -H "x-api-key: <key>" -d \'{"query":"{ online }"}\' <BASE_URL>/graphql`, and check ' +
+      "the box's `unraid-api` logs for the CSRF middleware decision."
+    );
+  }
+  return `GraphQL error: ${summary}`;
 }
 
 export function createUnraidClient(
