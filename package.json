@@ -1,6 +1,6 @@
 {
   "name": "unraid-code-mode-mcp",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "Code-mode MCP server for the Unraid 7.2+ GraphQL API. Two tools (search + execute) with QuickJS WASM sandbox plus an optional Cloudflare Workers entry. Single-user (env) and multi-user (per-request HTTP headers) modes.",
   "private": true,
   "type": "module",
@@ -26,6 +26,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:sandbox": "node scripts/sandbox-smoke.mjs",
+    "smoke:inspector": "bash scripts/smoke-inspector.sh",
     "update-spec": "tsx scripts/update-spec.ts",
     "cf:dev": "wrangler dev --config cf-worker/wrangler.toml",
     "cf:deploy": "wrangler deploy --config cf-worker/wrangler.toml"

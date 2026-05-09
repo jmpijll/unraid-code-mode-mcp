@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] — 2026-05-09
+
+Maintenance + automation release. No behaviour changes — all-tooling.
+
+### Added
+
+- **`.github/workflows/update-spec.yml`** — weekly cron (06:37 UTC every Monday) + manual `workflow_dispatch` that detects new [`unraid/api`](https://github.com/unraid/api/releases) releases, bumps `PINNED_UNRAID_TAG` in `scripts/update-spec.ts`, regenerates `src/spec/local-fallback.graphql`, and opens a PR labelled `dependencies` + `spec` with the release-notes link. Closes the long-standing roadmap item ("Auto-bump the bundled SDL pin via Dependabot-style PRs"). The PR uses [`peter-evans/create-pull-request@v7`](https://github.com/peter-evans/create-pull-request); reviewer checklist includes eyeballing the schema diff and re-running the live-verification matrix before tagging the next release.
+- **`scripts/smoke-inspector.sh` + `npm run smoke:inspector`** — local mirror of the CI MCP Inspector smoke. Boots `dist/index.js`, asks for `tools/list`, asserts both `search` and `execute` are exposed. No Unraid box required — bundled SDL fallback covers the schema. Useful as a fast pre-commit confidence check; CI now reuses the same script (single source of truth).
+- **`spec`, `dependencies`, `npm`, `github-actions` labels** added to `scripts/post-flip-repo-settings.sh` so they survive a fork/repo-recreate. `dependencies` and `npm` are also referenced by Dependabot's per-ecosystem `labels:` blocks (`.github/dependabot.yml`).
+- **README.md "Verifying your install"** mini-section pointing at the four no-Unraid-needed local checks: `npm test`, `npm run test:sandbox`, `npm run smoke:inspector`, and `npm run build`.
+
+### Changed
+
+- **`.github/workflows/ci.yml`** — the inline MCP Inspector smoke step (`npx -y @modelcontextprotocol/inspector@0.20.0 --cli ... --method tools/list`) is now `npm run smoke:inspector`. Identical behaviour, but the smoke recipe now lives in one place.
+- README's Roadmap section restructured to mark the four newly-completed items and re-prioritise what's still open. The next big-leverage open item is **"more LLM clients verified"** (Claude Code CLI, MCP Inspector UI, VS Code + Copilot) — the gating item for `1.0.0`.
+
 ## [0.1.0-beta.2] — 2026-05-09
 
 Beta point release driven by what we found while running real LLMs through the server. Every change in this release is either: (a) a behaviour the cursor-agent + opencode verification surfaced, (b) a config knob the verification asked for, or (c) a doc gap the verification exposed.

@@ -1,0 +1,146 @@
+name: Bundled SDL — auto-bump
+
+# Weekly check for new `unraid/api` releases. If the latest tag is newer
+# than `PINNED_UNRAID_TAG` in scripts/update-spec.ts, the workflow:
+#   1. Bumps the pin in the script.
+#   2. Regenerates src/spec/local-fallback.graphql by running the script
+#      against the new tag.
+#   3. Opens a PR with the bumped pin + regenerated SDL + a release-notes link
+#      (so the maintainer can eyeball the new fields before merging).
+#
+# Manual dispatch is supported (`Run workflow` button) for ad-hoc bumps.
+#
+# The PR is opened by the github-actions bot. CI runs against it normally;
+# the human merger is responsible for the live-verification matrix per
+# CONTRIBUTING.md.
+
+on:
+  schedule:
+    - cron: '37 6 * * 1' # 06:37 UTC every Monday — quiet time, off the hour
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-spec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js 22.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Read currently pinned tag
+        id: current
+        run: |
+          set -euo pipefail
+          current=$(grep -E "^const PINNED_UNRAID_TAG" scripts/update-spec.ts | sed -E "s/.*'([^']+)'.*/\1/")
+          if [[ -z "${current}" ]]; then
+            echo "Could not parse PINNED_UNRAID_TAG from scripts/update-spec.ts" >&2
+            exit 1
+          fi
+          echo "Current pinned tag: ${current}"
+          echo "tag=${current}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve latest unraid/api release tag
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(gh api repos/unraid/api/releases/latest --jq '.tag_name')
+          if [[ -z "${latest}" ]]; then
+            echo "Could not resolve latest unraid/api release tag" >&2
+            exit 1
+          fi
+          echo "Latest upstream release tag: ${latest}"
+          echo "tag=${latest}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether a bump is needed
+        id: decide
+        run: |
+          if [[ "${{ steps.current.outputs.tag }}" == "${{ steps.latest.outputs.tag }}" ]]; then
+            echo "Already on latest (${{ steps.current.outputs.tag }}). Nothing to do."
+            echo "bump_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Bump needed: ${{ steps.current.outputs.tag }} → ${{ steps.latest.outputs.tag }}"
+            echo "bump_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump the pin in scripts/update-spec.ts
+        if: steps.decide.outputs.bump_needed == 'true'
+        run: |
+          set -euo pipefail
+          sed -i.bak \
+            -E "s/^(const PINNED_UNRAID_TAG = )'[^']+';/\\1'${{ steps.latest.outputs.tag }}';/" \
+            scripts/update-spec.ts
+          rm scripts/update-spec.ts.bak
+          # Sanity check
+          grep -E "^const PINNED_UNRAID_TAG = '${{ steps.latest.outputs.tag }}'" scripts/update-spec.ts
+
+      - name: Regenerate bundled SDL
+        if: steps.decide.outputs.bump_needed == 'true'
+        run: npm run update-spec
+
+      - name: Lint + typecheck + test against the new SDL
+        if: steps.decide.outputs.bump_needed == 'true'
+        # Don't fail the workflow on test failures — we want the PR to open
+        # so a human can investigate. CI on the PR will run a fresh suite.
+        continue-on-error: true
+        run: |
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Open pull request
+        if: steps.decide.outputs.bump_needed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ github.token }}
+          branch: chore/bump-unraid-sdl-${{ steps.latest.outputs.tag }}
+          delete-branch: true
+          base: main
+          title: 'chore(spec): bump bundled Unraid SDL pin to ${{ steps.latest.outputs.tag }}'
+          commit-message: |
+            chore(spec): bump bundled Unraid SDL pin to ${{ steps.latest.outputs.tag }}
+
+            Auto-bumped by .github/workflows/update-spec.yml after detecting
+            a new release on https://github.com/unraid/api.
+
+            Previous pin: ${{ steps.current.outputs.tag }}
+            New pin:      ${{ steps.latest.outputs.tag }}
+
+            Source diff: https://github.com/unraid/api/compare/${{ steps.current.outputs.tag }}...${{ steps.latest.outputs.tag }}
+          body: |
+            ## Auto-bump bundled Unraid SDL
+
+            A newer release of [`unraid/api`](https://github.com/unraid/api/releases) is available.
+
+            | Field | Value |
+            |---|---|
+            | Previous pin | `${{ steps.current.outputs.tag }}` |
+            | New pin | `${{ steps.latest.outputs.tag }}` |
+            | Diff | [`${{ steps.current.outputs.tag }}...${{ steps.latest.outputs.tag }}`](https://github.com/unraid/api/compare/${{ steps.current.outputs.tag }}...${{ steps.latest.outputs.tag }}) |
+            | Source URL | https://raw.githubusercontent.com/unraid/api/${{ steps.latest.outputs.tag }}/api/generated-schema.graphql |
+            | Release notes | https://github.com/unraid/api/releases/tag/${{ steps.latest.outputs.tag }} |
+
+            ## Reviewer checklist
+
+            - [ ] Eyeball the schema diff — any field renames, removals, or new mutations that need agent-side awareness?
+            - [ ] If the diff is large, regenerate any docs that reference specific operation names.
+            - [ ] CI is green on this PR (lint, typecheck, test, build, MCP Inspector smoke).
+            - [ ] If a downstream consumer relied on a now-removed field, gate the bump behind a major-version note.
+            - [ ] After merge, run the local live-verification matrix per [CONTRIBUTING.md](../CONTRIBUTING.md) before tagging the next release.
+          labels: |
+            dependencies
+            spec
+          assignees: jmpijll

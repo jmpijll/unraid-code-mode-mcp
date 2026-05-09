@@ -3,7 +3,7 @@
 ## Supported versions
 
 This project is in public **beta**. Only the latest tagged version
-(currently `v0.1.0-beta.2`) receives security fixes.
+(currently `v0.1.0-beta.3`) receives security fixes.
 
 | Version | Supported |
 |---|---|

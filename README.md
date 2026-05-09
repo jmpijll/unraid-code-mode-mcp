@@ -3,7 +3,7 @@
 [![CI](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/jmpijll/unraid-code-mode-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status: beta](https://img.shields.io/badge/status-beta-orange.svg)](#project-status)
-[![Version: v0.1.0-beta.2](https://img.shields.io/badge/version-v0.1.0--beta.2-blue.svg)](CHANGELOG.md)
+[![Version: v0.1.0-beta.3](https://img.shields.io/badge/version-v0.1.0--beta.3-blue.svg)](CHANGELOG.md)
 
 A code-mode MCP server for the **[Unraid](https://unraid.net) 7.2+ GraphQL API**. Exposes two MCP tools — `search` and `execute` — that let an LLM agent introspect and call any Unraid GraphQL field by writing JavaScript that runs inside a sandboxed QuickJS WASM context.
 
@@ -196,10 +196,21 @@ return data;
 - [Architecture](docs/architecture.md) — per-module breakdown, request lifecycle.
 - [Multi-tenant deployment](docs/multi-tenant.md) — HTTP transport + headers.
 - [Deployment](docs/deployment.md) — Node / Docker / Cloudflare.
-- [Security](docs/security.md) — sandbox properties, TLS, threat model.
+- [Security](docs/security.md) — sandbox properties, TLS, Unraid 7.2 CSRF behaviour, threat model.
 - [Cursor coupling guide](docs/cursor-skill.md) — `.cursor/mcp.json` shapes, `cursor-agent` quirks, smoke commands.
 - [opencode coupling guide](docs/opencode-skill.md) — `opencode.json` shape, permissions, headless verification.
 - [Verification transcripts](out/verification/README.md) — sanitized records of every live end-to-end run we have.
+
+## Verifying your install
+
+```bash
+npm run build
+npm test                  # 65 unit + integration tests
+npm run test:sandbox      # QuickJS host-bridge stress (no Unraid box needed)
+npm run smoke:inspector   # MCP Inspector CLI smoke against built dist (no Unraid box needed)
+```
+
+If `smoke:inspector` prints `OK: both 'search' and 'execute' tools exposed by dist/index.js`, your build is wire-compatible with any MCP client. The sandbox stress doubles as the regression bar for the Promise-callback host bridge.
 
 ## Multi-user / multi-tenant
 
@@ -238,17 +249,18 @@ What is **not yet verified** (and where help is welcome):
 
 ## Roadmap
 
-**Done in `v0.1.0-beta.2`:**
+**Done in `v0.1.0-beta.2` and `v0.1.0-beta.3`:**
 
-- ✅ **Expose the sandbox wall-clock deadline as `UNRAID_EXECUTE_TIMEOUT_MS`** (1 s – 10 min, default 30 s). Useful for slow-booting VMs and for very large `Promise.all` batches against a controller under load.
-- ✅ **CSRF-aware error decoration** — when an Unraid box returns `extensions.code: UNAUTHENTICATED` + `Invalid CSRF token`, the MCP server adds a remediation hint pointing at API key re-mint, the curl sanity check, and the box-side log path. See [`docs/security.md`](docs/security.md#unraid-72-csrf-behaviour).
-- ✅ **MCP `serverInfo.version` reads from `package.json` at runtime** — no more hand-stamped version drift between releases.
-- ✅ **End-to-end LLM-mediated invocation verification** through `cursor-agent` (Claude Sonnet 4.6) and `opencode` (DeepSeek v4 Flash). See the verification matrix above.
+- ✅ **Expose the sandbox wall-clock deadline as `UNRAID_EXECUTE_TIMEOUT_MS`** (1 s – 10 min, default 30 s). Useful for slow-booting VMs and for very large `Promise.all` batches against a controller under load. _(beta.2)_
+- ✅ **CSRF-aware error decoration** — when an Unraid box returns `extensions.code: UNAUTHENTICATED` + `Invalid CSRF token`, the MCP server adds a remediation hint pointing at API key re-mint, the curl sanity check, and the box-side log path. See [`docs/security.md`](docs/security.md#unraid-72-csrf-behaviour). _(beta.2)_
+- ✅ **MCP `serverInfo.version` reads from `package.json` at runtime** — no more hand-stamped version drift between releases. _(beta.2)_
+- ✅ **End-to-end LLM-mediated invocation verification** through `cursor-agent` (Claude Sonnet 4.6) and `opencode` (DeepSeek v4 Flash). See the verification matrix above. _(beta.2)_
+- ✅ **Auto-bump bundled SDL pin** — `.github/workflows/update-spec.yml` runs weekly, detects new [`unraid/api`](https://github.com/unraid/api/releases) releases, regenerates `src/spec/local-fallback.graphql`, and opens a PR with a release-notes link for human review. _(beta.3)_
+- ✅ **`npm run smoke:inspector`** — local mirror of the CI MCP Inspector smoke. Boots the built `dist/index.js` server, requests `tools/list`, asserts both tools are exposed. CI now uses the same script. _(beta.3)_
 
 **Still open (rough order, highest-leverage first):**
 
-- **More LLM clients verified** — Claude Code CLI, Claude Desktop, MCP Inspector (CLI smoke runs in CI but UI is unverified), VS Code + Copilot. Roadmap item, gating for `1.0.0`.
-- **Auto-bump the bundled SDL pin** via Dependabot-style PRs as new `unraid/api` releases ship. Foundational dependency hygiene.
+- **More LLM clients verified** — Claude Code CLI, Claude Desktop, MCP Inspector UI (CLI smoke is in CI), VS Code + Copilot. Roadmap item, gating for `1.0.0`.
 - **Streamable HTTP multi-tenant deployment** verified against a real reverse proxy with rotating per-tenant credentials.
 - **Mutation verification matrix** beyond VM start/stop — Docker container lifecycle, parity checks, share/disk ops — once we have testers with redundant hardware.
 - **`unraid.connect.*`** namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.

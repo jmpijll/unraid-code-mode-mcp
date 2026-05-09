@@ -77,6 +77,28 @@ gh label create not-yet-verified \
   --description "Wired but not yet live-verified — testers welcome" \
   --force
 
+# 3b. Labels used by Dependabot + the SDL bumper workflow.
+gh label create dependencies \
+  --repo "$REPO" \
+  --color "0366D6" \
+  --description "Pull requests that update a dependency file" \
+  --force
+gh label create npm \
+  --repo "$REPO" \
+  --color "CB3837" \
+  --description "npm dependency update" \
+  --force
+gh label create github-actions \
+  --repo "$REPO" \
+  --color "000000" \
+  --description "GitHub Actions workflow update" \
+  --force
+gh label create spec \
+  --repo "$REPO" \
+  --color "5319E7" \
+  --description "Bundled SDL / GraphQL schema fallback" \
+  --force
+
 # 4. Private vulnerability reporting (private security advisories).
 echo "[post-flip] enabling private vulnerability reporting…"
 gh api -X PUT "repos/$REPO/private-vulnerability-reporting" || \
