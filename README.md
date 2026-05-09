@@ -184,6 +184,9 @@ return data;
 - [Multi-tenant deployment](docs/multi-tenant.md) — HTTP transport + headers.
 - [Deployment](docs/deployment.md) — Node / Docker / Cloudflare.
 - [Security](docs/security.md) — sandbox properties, TLS, threat model.
+- [Cursor coupling guide](docs/cursor-skill.md) — `.cursor/mcp.json` shapes, `cursor-agent` quirks, smoke commands.
+- [opencode coupling guide](docs/opencode-skill.md) — `opencode.json` shape, permissions, headless verification.
+- [Verification transcripts](out/verification/README.md) — sanitized records of every live end-to-end run we have.
 
 ## Multi-user / multi-tenant
 
@@ -228,6 +231,7 @@ What is **not yet verified** (and where help is welcome):
 - **`unraid.connect.*`** namespace for the Unraid Connect cloud API. Reserved in `TenantContext` today, not yet implemented.
 - **Cloudflare Workers transport adapter** (the bridge from Web `Request`/`Response` to the MCP SDK's Node `IncomingMessage`/`ServerResponse`). Tracked in [`cf-worker/README.md`](cf-worker/README.md).
 - **Auto-bump the bundled SDL pin** via Dependabot-style PRs as new `unraid/api` releases ship.
+- **Expose the sandbox wall-clock deadline as an env var** (e.g. `UNRAID_EXECUTE_TIMEOUT_MS`). Currently hardcoded to `DEFAULT_TIMEOUT_MS = 30_000` in `src/sandbox/limits.ts`. Useful for slow-booting VMs and for very large `Promise.all` batches against a controller under load.
 - **NPM publish** — reserved for `1.0.0`. The package is `"private": true` until then.
 
 ## Contributing
