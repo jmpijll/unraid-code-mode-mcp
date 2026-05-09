@@ -1,0 +1,180 @@
+================================================================================
+LIVE MUTATION VERIFICATION — Unraid 7.2 box, VM lifecycle round-trip
+Recorded: 2026-05-08 (pre-tag iteration on v0.1.0-beta.1)
+Source:   scripts/mcp-call.mjs driving src/sandbox/execute-executor.ts
+          via stdio against `node dist/index.js`
+================================================================================
+
+WHAT THIS PROVES
+  ✓ The unraid.local.mutation.* sandbox surface can drive a real
+    state-changing GraphQL mutation end-to-end against a live
+    Unraid 7.2 box. `vmStart(id: <vm-uuid>)` and
+    `vmStop(id: <vm-uuid>)` were both issued through the QuickJS
+    sandbox via the typed dispatcher, the server returned the
+    mutation result, and a follow-up `vms` query confirmed the
+    persisted state transition.
+  ✓ A full round-trip cycle (SHUTOFF → vmStart → poll until RUNNING
+    → vmStop → poll until SHUTOFF) completed cleanly inside a
+    single execute() invocation, leaving the controller in exactly
+    its original state.
+  ✓ The wall-clock-deadline drain loop in
+    src/sandbox/execute-executor.ts (which replaced the earlier
+    iteration-count cap) tolerates real-world VM-boot latency
+    without a premature timeout. The full cycle took noticeably
+    longer than the 5-second wallclock that an iteration-count cap
+    would have permitted.
+  ✓ Error propagation is clean through `await`. When the cycle was
+    re-run with the VM already in the RUNNING state, the second
+    `vmStart` call rejected with the upstream Unraid error message
+    "Failed to set VM state: Invalid state transition from RUNNING
+    to RUNNING" surfaced as a JS Error in the sandbox's `catch`
+    block — confirming the GraphQL-error → host-error → sandbox-
+    Promise-rejection path works end-to-end.
+  ✓ The kind-disambiguated typed dispatcher (mutation vs query with
+    colliding names) correctly resolves `vmStart` / `vmStop` to
+    their mutation definitions rather than any same-named query.
+
+WHAT THIS DOES NOT PROVE
+  ✗ Mutation verification on any non-VM surface. Docker container
+    `start` / `stop`, parity check `start` / `cancel`, share / disk
+    operations, user / API-key management, and the rest of the
+    mutation surface are wired through the typed dispatcher but
+    NOT live-verified. Probing those blindly against live hardware
+    is unsafe — testers with redundant homelabs welcome.
+  ✗ Multi-step mutation chains across different entity types
+    (e.g. start a VM, restart a container that depends on it).
+  ✗ Mutation behaviour under controller-side load.
+  ✗ End-to-end LLM-mediated mutation invocation. This run was
+    driven from scripts/mcp-call.mjs; an LLM client (Cursor, Claude
+    Code, opencode, …) issuing `vmStart` / `vmStop` via the
+    `execute` MCP tool has not been recorded.
+
+PRE-FLIGHT NOTES
+  This script is intentionally narrow about which VM it operates
+  on and assumes the operator has chosen a VM whose downtime is
+  acceptable. The maintainer's run targeted a VM dedicated to
+  test/idle workloads. **Do not paste this code against a
+  production VM** — it will stop and restart the VM, which is by
+  design but obviously disruptive if the VM is doing real work.
+
+  The script was also re-run after the maintainer manually
+  shut the VM down via the Unraid web UI, to ensure the cycle
+  always started from a known SHUTOFF state. That intermediate
+  state was important: an attempt to cycle starting from RUNNING
+  hit the documented "Invalid state transition" error described
+  in WHAT THIS PROVES above, which validated the error-propagation
+  path but did not produce the desired SHUTOFF→RUNNING→SHUTOFF
+  trace.
+
+EXACT COMMAND
+  # Set credentials in the environment first:
+  export UNRAID_BASE_URL=https://tower.local
+  export UNRAID_API_KEY=<redacted>
+  export UNRAID_INSECURE=true
+
+  # Identify the target VM's uuid via a read query:
+  npm run build
+  node scripts/mcp-call.mjs execute '
+    return await unraid.local.query.vms({
+      fields: "domain { uuid name state }"
+    });
+  '
+  # Pick the uuid of the VM you want to cycle and substitute below.
+
+  # Then run the cycle:
+  TARGET_UUID=<vm-uuid>
+  node scripts/mcp-call.mjs execute "$(cat <<JS
+    return await (async () => {
+      const TARGET_UUID = '$TARGET_UUID';
+
+      async function getState() {
+        const r = await unraid.local.query.vms({
+          fields: 'domain { uuid name state }'
+        });
+        const v = r.domain.find(d => d.uuid === TARGET_UUID);
+        if (!v) throw new Error('VM ' + TARGET_UUID + ' not found');
+        return v.state;
+      }
+
+      async function waitFor(target, maxIters) {
+        for (let i = 0; i < maxIters; i++) {
+          const s = await getState();
+          if (s === target) return s;
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        throw new Error('VM did not reach ' + target + ' within budget');
+      }
+
+      const phases = [];
+      phases.push({ phase: 'pre',           state: await getState() });
+      await unraid.local.mutation.vmStart({ args: { id: TARGET_UUID } });
+      phases.push({ phase: 'after-start',   state: await waitFor('RUNNING', 15) });
+      await unraid.local.mutation.vmStop({ args: { id: TARGET_UUID } });
+      phases.push({ phase: 'after-stop',    state: await waitFor('SHUTOFF', 15) });
+      return { uuid: TARGET_UUID, phases };
+    })();
+  JS
+  )"
+
+OBSERVED PHASE TRACE (paraphrased; raw stdout not preserved)
+  phases[0] = { phase: 'pre',         state: 'SHUTOFF' }
+  phases[1] = { phase: 'after-start', state: 'RUNNING' }   // observed within ~6 s
+  phases[2] = { phase: 'after-stop',  state: 'SHUTOFF' }   // observed within ~10 s
+
+OBSERVED ERROR PATH (separate run, started while VM was RUNNING)
+  await unraid.local.mutation.vmStart({ args: { id: '<vm-uuid>' } });
+  // throws:
+  //   Error: GraphQL error: Failed to set VM state: Invalid state
+  //   transition from RUNNING to RUNNING
+  // The error propagates synchronously out of `await` into the
+  // surrounding try/catch, with the upstream message preserved.
+
+OBSERVED LATENCY
+  Phase 1 (vmStart + waitFor RUNNING): ~6 s — `waitFor` returns as
+  soon as the polled state matches, so this is dominated by actual
+  VM boot time on the bare metal, not the per-poll setTimeout(2 s).
+  Phase 2 (vmStop + waitFor SHUTOFF): ~10 s — same shape, slightly
+  longer because the OS shutdown path is heavier than the BIOS-to-
+  prompt boot.
+  Total cycle wall-clock: well under the default 30 s sandbox
+  deadline on the maintainer's box. The sandbox overhead per call
+  was sub-millisecond.
+
+CAVEAT FOR SLOW-BOOTING VMs
+  The sandbox enforces a 30 s wall-clock deadline per execute()
+  invocation (DEFAULT_TIMEOUT_MS in src/sandbox/limits.ts). It is
+  not currently env-configurable. If the VM you're cycling boots
+  slowly enough that the full SHUTOFF → RUNNING → SHUTOFF round-
+  trip would blow the 30 s budget in a single execute() call, split
+  the round-trip across multiple execute() invocations:
+
+    1. one execute() that issues vmStart and waits for RUNNING,
+    2. one execute() that issues vmStop and waits for SHUTOFF.
+
+  Each of those is well under 30 s on typical hardware. Exposing the
+  sandbox deadline as an env var (e.g. UNRAID_EXECUTE_TIMEOUT_MS) is
+  a tracked improvement — see the README's roadmap section.
+
+PROBE METADATA
+  Server commit:        ecb0d9a (v0.1.0-beta.1 docs commit)
+  Bridge architecture:  sync context + Promise-callback host bridge
+                        (NEW in this release; previous asyncify
+                        bridge could not have completed the cycle
+                        within 30 s because of upstream
+                        quickjs-emscripten heap-corruption bugs on
+                        multi-await scripts — #258, #261, #235)
+  Sandbox limits:       MAX_CALLS_PER_EXECUTE=50 (default;
+                        configurable via UNRAID_MAX_CALLS_PER_EXECUTE),
+                        timeoutMs=30_000 (default; not currently
+                        env-configurable, see CAVEAT above),
+                        maxMemoryBytes=64 MiB (default).
+  MCP transport:        stdio (single-user, env-var credentials)
+  Unraid version:       7.2.x (single homelab box)
+
+WHO TO ASK FOR HELP IF THIS BREAKS FOR YOU
+  File a bug report or verification report at
+  https://github.com/jmpijll/unraid-code-mode-mcp/issues with the
+  exact command above, the redacted output, and your Unraid version.
+  If you're trying mutations beyond VM start/stop and want them
+  added to the verified matrix, file a verification report — that's
+  the most useful kind of contribution right now.

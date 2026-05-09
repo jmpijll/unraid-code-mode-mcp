@@ -1,0 +1,96 @@
+================================================================================
+SANDBOX MULTI-AWAIT STRESS — npm run test:sandbox
+Recorded: 2026-05-09 (committed alongside v0.1.0-beta.1 docs)
+Source:   scripts/sandbox-smoke.mjs (self-contained, no Unraid box needed)
+================================================================================
+
+WHAT THIS PROVES
+  ✓ The QuickJS sync-context + Promise-callback host bridge that
+    `execute` is built on (src/sandbox/execute-executor.ts) handles
+    every async pattern that real LLM-emitted code uses, with no
+    heap corruption, no premature termination, no deadlock, and no
+    error-swallowing.
+
+  Specifically:
+  ✓ A single `await` on a host-bridged promise resolves correctly.
+  ✓ 25 sequential `await` calls on host-bridged promises inside one
+    execute() resolve in order, with each result observed by the
+    sandbox before the next call is dispatched. (This is the
+    canonical multi-step LLM pattern; the previous asyncify-based
+    bridge crashed with WASM heap corruption at this scale —
+    quickjs-emscripten#258, #261, #235.)
+  ✓ A 10-way `Promise.all` over host-bridged promises resolves all
+    branches and delivers a single resolved array to the sandbox
+    `await`. (This is the parallel-batch pattern.)
+  ✓ Mixed sequential-then-parallel patterns (await some calls
+    sequentially, then await Promise.all of more calls) work
+    cleanly.
+  ✓ A host-bridged promise that rejects propagates through `await`
+    into the surrounding try/catch as a JS Error in the sandbox,
+    not a sandbox-side TypeError or a host-side crash.
+
+WHAT THIS DOES NOT PROVE
+  ✗ Real network behaviour. The host function (`__schedule` in
+    scripts/sandbox-smoke.mjs) is a simple Node setImmediate /
+    setTimeout shim, not an actual HTTP client. The integration
+    tests (src/__tests__/integration/scenarios.test.ts) cover the
+    real HttpClient → undici → mock GraphQL server path; the live
+    transcripts (local-read-sweep-live-smoke.txt and
+    vm-cycle-mutation-live-smoke.txt) cover the path against real
+    Unraid hardware.
+  ✗ Sandbox behaviour under memory pressure. The default 64 MiB
+    cap is well above what the smoke uses; long-running real
+    workloads with large GraphQL responses are not covered here.
+  ✗ Sandbox behaviour with unhandled rejections. The smoke always
+    `await`s its promises; an LLM that creates a promise and never
+    awaits it is undefined behaviour by current bridge design.
+
+EXACT COMMAND
+  npm run test:sandbox
+
+  # Equivalent direct invocation:
+  node scripts/sandbox-smoke.mjs
+
+VERBATIM OUTPUT (this run)
+  > unraid-code-mode-mcp@0.1.0-beta.1 test:sandbox
+  > node scripts/sandbox-smoke.mjs
+
+  PASS  single await
+  PASS  25 sequential awaits
+  PASS  Promise.all parallel x10
+  PASS  mixed sequential then parallel
+  PASS  error propagation through await
+
+  All sandbox smoke checks passed.
+
+EXIT CODE
+  0
+
+PROBE METADATA
+  Server commit:        ecb0d9a (v0.1.0-beta.1 docs commit)
+  QuickJS variant:      @jitl/quickjs-ng-wasmfile-release-sync 0.31.0
+                        (Bellard's quickjs-ng fork; sync-only build)
+  quickjs-emscripten-core: 0.31.0
+  Node.js:              22 (CI), also passes on 20 and 25
+  Bridge architecture:  sync context + Promise-callback host bridge
+                        — see src/sandbox/execute-executor.ts header
+                        comment for the rationale (asyncify is
+                        unusable today because of upstream
+                        heap-corruption bugs on multi-await scripts;
+                        sync + Promise-callback is the canonical
+                        workaround and supports unlimited sequential
+                        and parallel awaits cleanly).
+
+REGRESSION POSTURE
+  This script is the **regression bar** for the bridge. Run it after:
+    - upgrading `quickjs-emscripten-core`
+    - upgrading any `@jitl/quickjs-ng-wasmfile-*` variant
+    - editing src/sandbox/executor.ts or
+      src/sandbox/execute-executor.ts
+    - editing src/sandbox/dispatch.ts (the prelude that wraps host
+      functions in sandbox-side promises)
+
+  If any of the five lines above flips from PASS to FAIL, do not
+  ship the change — the underlying bug almost certainly breaks
+  multi-step LLM-emitted code, which is the entire point of the
+  `execute` tool.

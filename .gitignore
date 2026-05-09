@@ -23,3 +23,9 @@ src/spec/cache/
 .cursor/*
 !.cursor/mcp.json
 !.cursor/cli.json
+
+# Scratch outputs (logs, recordings, ad-hoc smokes) — keep verification
+# transcripts whitelisted so they ride along in the public repo.
+out/*
+!out/verification/
+!out/verification/**

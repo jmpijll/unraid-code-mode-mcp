@@ -1,0 +1,165 @@
+================================================================================
+LIVE LOCAL READ-SWEEP VERIFICATION — Unraid 7.2 box
+Recorded: 2026-05-08 (pre-tag iteration on v0.1.0-beta.1)
+Source:   scripts/mcp-call.mjs driving src/sandbox/execute-executor.ts
+          via stdio against `node dist/index.js`
+================================================================================
+
+WHAT THIS PROVES
+  ✓ The unraid.local.* sandbox surface is wired correctly against a
+    real Unraid 7.2 GraphQL endpoint over the LAN. The QuickJS
+    sync-context Promise-callback host bridge dispatches typed
+    queries through `__unraidCallLocalGraphql` and parses the JSON
+    response back into a sandbox object cleanly.
+  ✓ Per-tenant TLS handling honors UNRAID_INSECURE=true on the
+    self-signed *.unraid.net cert and emits the documented loud
+    warning at [unraid.local.http]. (The maintainer's homelab
+    additionally exposes the GraphQL endpoint over plain HTTP on
+    port 80 inside the LAN, which was used for some runs to avoid
+    needing the LAN CA in the test harness — both transports
+    produced identical sandbox responses.)
+  ✓ The typed-dispatch synthesizer at src/sandbox/dispatch.ts
+    correctly emits a GraphQL document for every operation tested
+    (`info`, `array`, `shares`, `vms`, `docker`, `online`) using
+    introspected arg types with no manual `query { ... }` strings.
+  ✓ Multiple sequential `await` calls inside a single execute()
+    settle correctly — the sync + Promise-callback bridge does NOT
+    suffer from the asyncify multi-await heap-corruption bug
+    (quickjs-emscripten#258, #261, #235) that the previous bridge
+    architecture hit.
+  ✓ `Promise.all` of independent typed queries also settles
+    correctly, with all results delivered to the sandbox in a
+    single resolved array.
+  ✓ The per-execute API-call budget (default 50, configurable via
+    UNRAID_MAX_CALLS_PER_EXECUTE) does not interfere with the
+    typical multi-query pattern used here (6 calls in the
+    sequential variant, 4 in the Promise.all variant).
+  ✓ Wall-clock timeout (default 30 s) is sufficient headroom for
+    real-world GraphQL latency on a busy controller — no observed
+    premature deadlines.
+
+WHAT THIS DOES NOT PROVE
+  ✗ End-to-end LLM-mediated invocation. This run was driven directly
+    from scripts/mcp-call.mjs (a purpose-built JSON-RPC harness), not
+    from a real MCP client (Cursor IDE, Claude Code, opencode, MCP
+    Inspector, …). Protocol-level smoke (`tools/list` returns
+    `search` and `execute`) is verified by the CI workflow's
+    inspector step but no LLM has been recorded driving the surface.
+  ✗ Behaviour against any Unraid box other than the maintainer's.
+    A single Unraid 7.2 box with the maintainer's specific array
+    config, plugin set, container mix, and VM set is not
+    generalisable evidence — different environments will surface
+    different edge cases.
+  ✗ Behaviour against the introspection-disabled fallback path in
+    a *live* setting. The fallback path is exercised by unit tests
+    (`src/__tests__/spec-loader.test.ts`) against a mock that
+    returns INTROSPECTION_DISABLED, but this run had introspection
+    enabled on the target Unraid box.
+  ✗ Long-running soak / stability under sustained load.
+  ✗ Behaviour with the multi-tenant HTTP transport. This run used
+    the stdio transport with single-user env-var credentials.
+
+EXACT COMMAND
+  # Set credentials in the environment first:
+  export UNRAID_BASE_URL=https://tower.local        # or http://tower.local
+  export UNRAID_API_KEY=<redacted>
+  export UNRAID_INSECURE=true                       # if no LAN CA installed
+
+  # Build the server, then drive a single execute() through the
+  # stdio transport:
+  npm run build
+  node scripts/mcp-call.mjs execute "$(cat <<'JS'
+    return await (async () => {
+      const info = await unraid.local.query.info({
+        fields: 'os { distro release kernel uptime } cpu { manufacturer brand cores threads }'
+      });
+      const arr = await unraid.local.query.array({ fields: 'state' });
+      const shares = await unraid.local.query.shares({
+        fields: 'name free used size'
+      });
+      const vms = await unraid.local.query.vms({
+        fields: 'domain { uuid name state }'
+      });
+      const docker = await unraid.local.query.docker({
+        fields: 'containers { id names state }'
+      });
+      const online = await unraid.local.graphql({
+        query: 'query { online }'
+      });
+      return {
+        info, arrayState: arr.state,
+        shareCount: shares.length,
+        vmCount: vms.domain.length,
+        containerCount: docker.containers.length,
+        online: online.online
+      };
+    })();
+  JS
+  )"
+
+EXACT SANDBOX CODE — Promise.all variant
+  return await (async () => {
+    const [info, arr, shares, online] = await Promise.all([
+      unraid.local.graphql({
+        query: 'query { info { os { distro release kernel } cpu { brand cores threads } } }'
+      }),
+      unraid.local.graphql({ query: 'query { array { state } }' }),
+      unraid.local.graphql({
+        query: 'query { shares { name free used size } }'
+      }),
+      unraid.local.graphql({ query: 'query { online }' })
+    ]);
+    return {
+      info: info.info,
+      arrayState: arr.array.state,
+      shareCount: shares.shares.length,
+      online: online.online
+    };
+  })();
+
+OBSERVED RESPONSE SHAPE (paraphrased; raw stdout not preserved)
+  - info.os.distro:       "Slackware Linux"          (string, non-empty)
+  - info.os.release:      semver-shaped string
+  - info.os.kernel:       Linux kernel version string
+  - info.os.uptime:       ISO 8601 timestamp
+  - info.cpu.brand:       CPU model string
+  - info.cpu.cores:       small positive integer
+  - info.cpu.threads:     small positive integer >= cores
+  - arrayState:           "STARTED"                  (UserState enum)
+  - shareCount:           small positive integer (single-digit)
+  - vmCount:              small positive integer
+  - containerCount:       small positive integer
+  - online:               true                       (boolean)
+  - Each `shares[].free` / `.used` / `.size` was a numeric string
+    (not a JS number) — Unraid's GraphQL emits disk capacity as
+    String to dodge JS-number precision loss on multi-TiB volumes.
+  - Each `vms.domain[].state` was one of: SHUTOFF, RUNNING (no
+    other states observed in this run).
+  - Each `docker.containers[].state` was one of: RUNNING, EXITED.
+
+OBSERVED LATENCY
+  Sequential variant (6 awaited GraphQL calls): ~1500 ms total
+  wall-clock from execute() entry to result delivery. Dominated by
+  GraphQL latency; sandbox overhead per call was sub-millisecond.
+
+  Promise.all variant (4 parallel GraphQL calls): ~600 ms total —
+  dominated by the slowest single call (info, with the largest
+  selection set), which matches the expected speedup.
+
+PROBE METADATA
+  Server commit:        ecb0d9a (v0.1.0-beta.1 docs commit)
+  QuickJS variant:      @jitl/quickjs-ng-wasmfile-release-sync 0.31.0
+  Bridge architecture:  sync context + Promise-callback host bridge
+                        (src/sandbox/execute-executor.ts)
+  Bundled SDL fallback: src/spec/local-fallback.graphql, pinned to
+                        unraid/api@v4.33.0 (was loaded only once at
+                        boot to populate the operation index; live
+                        introspection from the target Unraid box was
+                        also used and matched the pinned SDL).
+  MCP transport:        stdio (single-user, env-var credentials)
+  Unraid version:       7.2.x (single homelab box)
+
+WHO TO ASK FOR HELP IF THIS BREAKS FOR YOU
+  File a bug report or verification report at
+  https://github.com/jmpijll/unraid-code-mode-mcp/issues with the
+  exact command above, the redacted output, and your Unraid version.
