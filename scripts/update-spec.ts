@@ -40,7 +40,7 @@ import { fetch as undiciFetch } from 'undici';
  * Pinned upstream release tag. Bump deliberately, with verification.
  * Source: https://github.com/unraid/api/releases
  */
-const PINNED_UNRAID_TAG = 'v4.34.0';
+const PINNED_UNRAID_TAG = 'v4.35.0';
 
 function defaultSdlUrl(tag: string): string {
   return `https://raw.githubusercontent.com/unraid/api/${tag}/api/generated-schema.graphql`;
