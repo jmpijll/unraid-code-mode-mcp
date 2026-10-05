@@ -4,7 +4,7 @@ Guidance for AI coding agents working on **unraid-code-mode-mcp**. This file is 
 
 ## Project shape
 
-- TypeScript ESM, Node ≥ 20.
+- TypeScript ESM, Node ≥ 22.19.
 - Source under `src/`. Tests under `src/__tests__/`. Scripts under `scripts/`. Cloudflare scaffold under `cf-worker/`.
 - The MCP server exposes exactly two tools: `search` and `execute`. Don't add more without an architectural discussion — the whole point of "code mode" is the small surface.
 - Two namespaces are reserved in the type system: `local` (the LAN GraphQL API) and `connect` (the future Unraid Connect cloud API). v0.1 only implements `local`. New code that needs a credential map should accept `'local' | 'connect'` even if it only handles `local` today.
@@ -23,13 +23,10 @@ Guidance for AI coding agents working on **unraid-code-mode-mcp**. This file is 
 Before declaring work "done":
 
 ```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
+npm run check
 ```
 
-All four must pass. The MCP Inspector smoke test in CI greps for `search` and `execute` in `tools/list` output — if you rename either tool, update the workflow.
+All gates must pass. The offline built-MCP smoke checks metadata and both `search` and `execute` in `tools/list`; intentional tool changes must update `smoke:mcp` too.
 
 ## Commits
 
@@ -47,3 +44,9 @@ Co-authored-by: Cursor <noreply@cursor.com>
 - **GraphQL document synthesis.** `dispatchOperation` builds the `query opName($a: A!) { field(a: $a) { selection } }` string from introspected arg types. If you change `IndexedOperation`, double-check `buildOperationDocument` and the `dispatch.test.ts` snapshots.
 - **TLS.** A custom `Dispatcher` passed to `undici` bypasses `MockAgent`. Tests that need the mock agent must not trigger the custom-dispatcher path. Unit-test the dispatcher builder in isolation instead.
 - **SDL fallback.** `src/spec/local-fallback.graphql` is committed and refreshed by `scripts/update-spec.ts`. The Unraid SDL contains custom directives like `@usePermissions` — `buildSchema` is called with `assumeValidSDL: true`. Don't strip that flag.
+
+## Shared offline validation
+
+`npm run check` includes strict formatting and `smoke:mcp`, which initializes the built stdio server
+and checks package metadata and both tool names with network access disabled and no tenant credentials.
+`npm run cf:check` bundles the Worker without deploying. Keep live API and interactive Inspector checks separate.

@@ -27,6 +27,7 @@
  * the Node HTTP transport (see [docs/multi-tenant.md](../docs/multi-tenant.md)).
  */
 
+import packageInfo from '../package.json';
 import { DynamicWorkerExecutor } from '@cloudflare/codemode';
 import { openApiMcpServer, type RequestOptions } from '@cloudflare/codemode/mcp';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -106,10 +107,7 @@ export default {
       spec,
       executor,
       name: `unraid-code-mode-mcp-${namespace}`,
-      // cf-worker scaffold: version is hand-stamped here because Workers can't
-      // read package.json at runtime. Bump alongside the Node entry on each
-      // release until the cf-worker becomes a first-class deployment target.
-      version: '0.1.0-beta.3',
+      version: packageInfo.version,
       request: async (opts: RequestOptions): Promise<unknown> => doRequest(opts, creds),
     });
 

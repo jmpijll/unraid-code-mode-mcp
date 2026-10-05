@@ -29,3 +29,6 @@ src/spec/cache/
 out/*
 !out/verification/
 !out/verification/**
+
+# Worker dry-run output
+.wrangler-out/
