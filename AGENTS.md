@@ -4,7 +4,7 @@ Guidance for AI coding agents working on **unraid-code-mode-mcp**. This file is 
 
 ## Project shape
 
-- TypeScript ESM, Node ≥ 20.
+- TypeScript ESM, Node ≥ 22.19.
 - Source under `src/`. Tests under `src/__tests__/`. Scripts under `scripts/`. Cloudflare scaffold under `cf-worker/`.
 - The MCP server exposes exactly two tools: `search` and `execute`. Don't add more without an architectural discussion — the whole point of "code mode" is the small surface.
 - Two namespaces are reserved in the type system: `local` (the LAN GraphQL API) and `connect` (the future Unraid Connect cloud API). v0.1 only implements `local`. New code that needs a credential map should accept `'local' | 'connect'` even if it only handles `local` today.

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Add a Worker dry-run CI job to check scaffold builds alongside Node checks.
+- Derive Node MCP version metadata from package.json across the family; use package metadata in Worker scaffolds to prevent release drift.
+- Align README presentation with Vapour and Slightshot, retaining detailed setup and historical verification in the usage guide.
+- Align Node 22.19+ requirements, contributor checks, install policy, LF text handling, CI and Docker build exclusions across the code-mode server family.
+
 ## [0.1.0-beta.3] — 2026-05-09
 
 Maintenance + automation release. No behaviour changes — all-tooling.

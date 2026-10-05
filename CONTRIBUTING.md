@@ -26,7 +26,7 @@ Don't open blank issues — they're disabled.
 ```bash
 git clone https://github.com/jmpijll/unraid-code-mode-mcp
 cd unraid-code-mode-mcp
-npm install --legacy-peer-deps
+npm ci
 cp .env.example .env
 # (optional) edit .env to point at a real Unraid box for live testing
 npm run dev
@@ -45,7 +45,7 @@ npm run dev
 | `npm run test:watch` | Vitest watch mode |
 | `npm run update-spec` | Refresh `src/spec/local-fallback.graphql` from upstream |
 
-CI runs `lint`, `typecheck`, `test`, and `build` on Node 20 + Node 22, plus an MCP Inspector smoke test that confirms `tools/list` exposes both `search` and `execute`. Keep them green.
+CI runs `lint`, `typecheck`, `test`, and `build` on Node 22 + Node 24, plus an MCP Inspector smoke test that confirms `tools/list` exposes both `search` and `execute`. Keep them green.
 
 ## Style
 
@@ -81,3 +81,14 @@ Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md). Keep diffs focused — 
 ## Security
 
 Do not file security issues publicly. Use the [private security advisory form](https://github.com/jmpijll/unraid-code-mode-mcp/security/advisories/new). See [SECURITY.md](SECURITY.md).
+
+
+## Shared repository conventions
+
+- Use Node.js 22.19+; the lockfile dependencies require this baseline.
+- Install with `npm ci`; `.npmrc` keeps the resolver policy consistent in local, CI and Docker builds.
+- Run `npm run check` before opening a PR: lint, typecheck, mocked tests and build.
+- Run `npm run format:check` separately and report existing drift. CI reports formatting without blocking unrelated changes.
+- Keep text files in LF format (`.gitattributes`).
+- Keep service-specific API semantics, tool names and sandbox bridges compatible.
+- Record live checks separately from mocked tests; never infer new client or upstream coverage from CI.

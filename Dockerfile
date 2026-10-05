@@ -3,8 +3,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src/ ./src/
@@ -22,8 +22,8 @@ RUN addgroup -S mcp && adduser -S mcp -G mcp
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist/ ./dist/
 
