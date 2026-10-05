@@ -1,3 +1,4 @@
+import { SERVER_VERSION } from '../version.js';
 /**
  * MCP Server — Unraid Code Mode
  *
@@ -126,7 +127,7 @@ export function createMcpServer(options: CreateServerOptions): McpServer {
     limits,
     logger,
     name = 'unraid-code-mode-mcp',
-    version = '0.1.0',
+    version = SERVER_VERSION,
   } = options;
 
   const server = new McpServer(

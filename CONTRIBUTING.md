@@ -40,12 +40,12 @@ npm run dev
 | `npm run build` | Type-check + emit to `dist/` |
 | `npm run lint` | ESLint over `src/`, `scripts/`, `cf-worker/` |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run format:check` | Prettier check (advisory in CI) |
+| `npm run format:check` | Required Prettier check (included in `npm run check`) |
 | `npm test` | Vitest in CI mode |
 | `npm run test:watch` | Vitest watch mode |
 | `npm run update-spec` | Refresh `src/spec/local-fallback.graphql` from upstream |
 
-CI runs `lint`, `typecheck`, `test`, and `build` on Node 22 + Node 24, plus an MCP Inspector smoke test that confirms `tools/list` exposes both `search` and `execute`. Keep them green.
+CI runs `npm run check` on Node 22 and 24, including formatting and the offline built-MCP smoke. A separate job runs `npm run cf:check`.
 
 ## Style
 
@@ -76,7 +76,7 @@ If working with an LLM coding assistant, include a `Co-authored-by:` trailer.
 
 ## Pull requests
 
-Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md). Keep diffs focused — one concern per PR. Pre-existing Prettier drift on untouched lines is fine to leave alone.
+Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md). Keep diffs focused — one concern per PR. Formatting is enforced in CI; avoid unrelated cleanup in feature changes.
 
 ## Security
 
@@ -87,8 +87,15 @@ Do not file security issues publicly. Use the [private security advisory form](h
 
 - Use Node.js 22.19+; the lockfile dependencies require this baseline.
 - Install with `npm ci`; `.npmrc` keeps the resolver policy consistent in local, CI and Docker builds.
-- Run `npm run check` before opening a PR: lint, typecheck, mocked tests and build.
-- Run `npm run format:check` separately and report existing drift. CI reports formatting without blocking unrelated changes.
+- Run `npm run check` before opening a PR: lint, formatting, typecheck, mocked tests and build.
+- Formatting is enforced by `npm run check`; use `npm run format` to apply the shared style.
 - Keep text files in LF format (`.gitattributes`).
 - Keep service-specific API semantics, tool names and sandbox bridges compatible.
 - Record live checks separately from mocked tests; never infer new client or upstream coverage from CI.
+
+## Offline and Worker checks
+
+`npm run smoke:mcp` checks the built stdio server name, package version and two tool names.
+It is included in `npm run check`, blocks upstream network access and does not forward tenant credentials.
+Run `npm run cf:check` after Worker changes; it bundles without deploying.
+Live API and interactive Inspector checks remain separate and require deliberate credentials.

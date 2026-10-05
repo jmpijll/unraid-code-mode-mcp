@@ -97,9 +97,7 @@ async function check(label, code, predicate) {
   if (ok) {
     console.log(`PASS  ${label}`);
   } else {
-    console.error(
-      `FAIL  ${label}: outcome=${JSON.stringify(outcome).slice(0, 200)}`,
-    );
+    console.error(`FAIL  ${label}: outcome=${JSON.stringify(outcome).slice(0, 200)}`);
     failures += 1;
   }
 }
