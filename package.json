@@ -64,18 +64,18 @@
     "node": ">=22.19.0"
   },
   "devDependencies": {
-    "@cloudflare/codemode": "^0.3.4",
+    "@cloudflare/codemode": "^0.5.3",
     "@cloudflare/workers-types": "^4.20260515.1",
     "@types/node": "^25.9.1",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.60.1",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
     "dotenv": "^17.0.0",
     "eslint": "^8.57.0",
-    "prettier": "^3.4.0",
-    "tsx": "^4.22.4",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.0",
     "vitest": "^4.1.8",
-    "wrangler": "^4.96.0"
+    "wrangler": "^4.147.0"
   },
   "dependencies": {
     "@jitl/quickjs-ng-wasmfile-release-sync": "^0.31.0",
